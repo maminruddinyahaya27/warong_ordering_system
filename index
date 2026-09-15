@@ -1,0 +1,687 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPT-58 Bluetooth Test</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+        background: #111827;
+        color: white;
+    }
+
+    .container {
+        max-width: 600px;
+        margin: auto;
+    }
+
+    h1 {
+        margin-bottom: 5px;
+    }
+
+    .subtitle {
+        color: #9ca3af;
+        margin-bottom: 25px;
+    }
+
+    button {
+        width: 100%;
+        padding: 15px;
+        margin: 8px 0;
+        border: 0;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    #connect {
+        background: #10b981;
+        color: white;
+    }
+
+    #print {
+        background: #2563eb;
+        color: white;
+    }
+
+    #disconnect {
+        background: #374151;
+        color: white;
+    }
+
+    button:disabled {
+        opacity: 0.4;
+    }
+
+    .status {
+        padding: 15px;
+        margin: 15px 0;
+        background: #1f2937;
+        border-radius: 10px;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .device {
+        background: #1f2937;
+        padding: 15px;
+        border-radius: 10px;
+        margin-top: 15px;
+    }
+
+    .service {
+        margin-top: 15px;
+        padding: 12px;
+        background: #111827;
+        border-radius: 8px;
+    }
+
+    .characteristic {
+        margin-top: 8px;
+        padding: 10px;
+        background: #374151;
+        border-radius: 6px;
+        font-size: 13px;
+    }
+
+    .writeable {
+        border-left: 4px solid #10b981;
+    }
+
+    .not-writeable {
+        border-left: 4px solid #ef4444;
+    }
+
+    code {
+        font-size: 11px;
+        word-break: break-all;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>🖨️ MPT-58 Test</h1>
+
+    <div class="subtitle">
+        Android Chrome → Bluetooth → MPT-58
+    </div>
+
+    <button id="connect">
+        Connect MPT-58
+    </button>
+
+    <button id="print" disabled>
+        Print Test Receipt
+    </button>
+
+    <button id="disconnect" disabled>
+        Disconnect
+    </button>
+
+    <div id="status" class="status">
+Status: Not connected
+    </div>
+
+    <div id="deviceInfo" class="device" style="display:none;"></div>
+
+    <div id="services"></div>
+
+</div>
+
+<script>
+
+let bluetoothDevice = null;
+let bluetoothServer = null;
+let writableCharacteristic = null;
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function log(message) {
+
+    const status = document.getElementById("status");
+
+    status.textContent += "\n" + message;
+
+    console.log(message);
+}
+
+
+function setStatus(message) {
+
+    document.getElementById("status").textContent = message;
+
+    console.log(message);
+}
+
+
+/* =========================================================
+   CONNECT
+========================================================= */
+
+document.getElementById("connect").addEventListener("click", async () => {
+
+    try {
+
+        setStatus("Opening Bluetooth device selector...");
+
+        if (!navigator.bluetooth) {
+
+            setStatus(
+                "ERROR:\n\n" +
+                "Web Bluetooth is not available.\n\n" +
+                "Make sure you are using Google Chrome on Android."
+            );
+
+            return;
+        }
+
+
+        /*
+         * First try allowing any BLE printer.
+         *
+         * This is intentional for testing.
+         */
+
+        bluetoothDevice = await navigator.bluetooth.requestDevice({
+
+            acceptAllDevices: true,
+
+            optionalServices: [
+                "generic_access",
+                "generic_attribute",
+                "device_information"
+            ]
+
+        });
+
+
+        log("Device selected: " + (bluetoothDevice.name || "Unknown"));
+
+        document.getElementById("deviceInfo").style.display = "block";
+
+        document.getElementById("deviceInfo").innerHTML =
+            "<strong>Device</strong><br>" +
+            "Name: " +
+            escapeHtml(bluetoothDevice.name || "Unknown");
+
+
+        bluetoothDevice.addEventListener(
+            "gattserverdisconnected",
+            onDisconnected
+        );
+
+
+        if (!bluetoothDevice.gatt) {
+
+            throw new Error(
+                "This device does not expose a GATT server."
+            );
+        }
+
+
+        setStatus("Connecting to GATT...");
+
+        bluetoothServer =
+            await bluetoothDevice.gatt.connect();
+
+
+        log("GATT connected.");
+
+
+        setStatus(
+            "Connected!\n\n" +
+            "Discovering services..."
+        );
+
+
+        /*
+         * Get all services.
+         */
+
+        let services;
+
+        try {
+
+            services =
+                await bluetoothServer.getPrimaryServices();
+
+        } catch (error) {
+
+            /*
+             * Some devices require known services.
+             * Try common printer services.
+             */
+
+            log(
+                "Could not enumerate all services: " +
+                error.message
+            );
+
+            services = [];
+        }
+
+
+        const servicesContainer =
+            document.getElementById("services");
+
+        servicesContainer.innerHTML = "";
+
+
+        /*
+         * If getPrimaryServices worked,
+         * inspect every service.
+         */
+
+        for (const service of services) {
+
+            await inspectService(service);
+        }
+
+
+        if (!writableCharacteristic) {
+
+            setStatus(
+                "Connected, but NO writable BLE characteristic was found.\n\n" +
+                "This is important:\n\n" +
+                "Your MPT-58 may be Bluetooth Classic/SPP rather than BLE.\n\n" +
+                "If that happens, Chrome cannot directly send ESC/POS data to it."
+            );
+
+        } else {
+
+            setStatus(
+                "SUCCESS!\n\n" +
+                "Writable BLE characteristic found.\n\n" +
+                "You can now press 'Print Test Receipt'."
+            );
+
+            document.getElementById("print").disabled = false;
+        }
+
+
+        document.getElementById("disconnect").disabled = false;
+
+    } catch (error) {
+
+        console.error(error);
+
+        setStatus(
+            "Connection failed:\n\n" +
+            error.name +
+            "\n" +
+            error.message
+        );
+    }
+
+});
+
+
+/* =========================================================
+   INSPECT SERVICE
+========================================================= */
+
+async function inspectService(service) {
+
+    const servicesContainer =
+        document.getElementById("services");
+
+
+    const serviceBox =
+        document.createElement("div");
+
+    serviceBox.className = "service";
+
+
+    serviceBox.innerHTML =
+        "<strong>Service</strong><br>" +
+        "<code>" +
+        service.uuid +
+        "</code>";
+
+
+    servicesContainer.appendChild(serviceBox);
+
+
+    let characteristics;
+
+    try {
+
+        characteristics =
+            await service.getCharacteristics();
+
+    } catch (error) {
+
+        const errorBox =
+            document.createElement("div");
+
+        errorBox.className =
+            "characteristic not-writeable";
+
+        errorBox.textContent =
+            "Could not read characteristics: " +
+            error.message;
+
+        serviceBox.appendChild(errorBox);
+
+        return;
+    }
+
+
+    for (const characteristic of characteristics) {
+
+        const properties =
+            characteristic.properties;
+
+
+        const canWrite =
+            properties.write ||
+            properties.writeWithoutResponse;
+
+
+        const characteristicBox =
+            document.createElement("div");
+
+
+        characteristicBox.className =
+            "characteristic " +
+            (canWrite
+                ? "writeable"
+                : "not-writeable");
+
+
+        characteristicBox.innerHTML =
+            "<strong>" +
+            (canWrite
+                ? "✓ WRITABLE"
+                : "Not writable") +
+            "</strong><br><br>" +
+
+            "UUID:<br>" +
+            "<code>" +
+            characteristic.uuid +
+            "</code><br><br>" +
+
+            "Properties:<br>" +
+            "<code>" +
+            JSON.stringify(properties, null, 2) +
+            "</code>";
+
+
+        serviceBox.appendChild(characteristicBox);
+
+
+        /*
+         * Keep the first writable characteristic.
+         */
+
+        if (
+            !writableCharacteristic &&
+            canWrite
+        ) {
+
+            writableCharacteristic =
+                characteristic;
+
+            log(
+                "Writable characteristic found: " +
+                characteristic.uuid
+            );
+        }
+    }
+}
+
+
+/* =========================================================
+   PRINT TEST
+========================================================= */
+
+document.getElementById("print").addEventListener(
+    "click",
+    async () => {
+
+        if (!writableCharacteristic) {
+
+            alert(
+                "No writable BLE characteristic found."
+            );
+
+            return;
+        }
+
+
+        try {
+
+            setStatus(
+                "Sending ESC/POS test receipt..."
+            );
+
+
+            /*
+             * ESC/POS commands
+             */
+
+            const encoder =
+                new TextEncoder();
+
+
+            const data = new Uint8Array([
+
+                // Initialize printer
+                0x1B, 0x40,
+
+                // Center
+                0x1B, 0x61, 0x01,
+
+                // Bold ON
+                0x1B, 0x45, 0x01,
+
+                ...encoder.encode(
+                    "MPT-58 TEST\n"
+                ),
+
+                // Bold OFF
+                0x1B, 0x45, 0x00,
+
+                ...encoder.encode(
+                    "Bluetooth Web Test\n"
+                ),
+
+                ...encoder.encode(
+                    "--------------------------\n"
+                ),
+
+                // Left
+                0x1B, 0x61, 0x00,
+
+                ...encoder.encode(
+                    "Burger          RM 12.00\n"
+                ),
+
+                ...encoder.encode(
+                    "Chicken Chop    RM 18.00\n"
+                ),
+
+                ...encoder.encode(
+                    "Drink             RM 5.00\n"
+                ),
+
+                ...encoder.encode(
+                    "--------------------------\n"
+                ),
+
+                0x1B, 0x45, 0x01,
+
+                ...encoder.encode(
+                    "TOTAL           RM 35.00\n"
+                ),
+
+                0x1B, 0x45, 0x00,
+
+                ...encoder.encode(
+                    "\n\n\n"
+                ),
+
+                /*
+                 * Cut paper.
+                 * Some 58mm printers don't have cutters,
+                 * so this may simply be ignored.
+                 */
+
+                0x1D, 0x56, 0x00
+
+            ]);
+
+
+            /*
+             * BLE packets are usually limited in size.
+             *
+             * Send in small chunks.
+             */
+
+            const chunkSize = 100;
+
+
+            for (
+                let i = 0;
+                i < data.length;
+                i += chunkSize
+            ) {
+
+                const chunk =
+                    data.slice(
+                        i,
+                        Math.min(
+                            i + chunkSize,
+                            data.length
+                        )
+                    );
+
+
+                if (
+                    writableCharacteristic
+                        .properties
+                        .writeWithoutResponse
+                ) {
+
+                    await writableCharacteristic
+                        .writeValueWithoutResponse(
+                            chunk
+                        );
+
+                } else {
+
+                    await writableCharacteristic
+                        .writeValue(
+                            chunk
+                        );
+                }
+
+
+                /*
+                 * Give printer a moment.
+                 */
+
+                await sleep(30);
+            }
+
+
+            setStatus(
+                "SUCCESS!\n\n" +
+                "ESC/POS data sent to MPT-58."
+            );
+
+        } catch (error) {
+
+            console.error(error);
+
+            setStatus(
+                "PRINT ERROR:\n\n" +
+                error.name +
+                "\n" +
+                error.message
+            );
+        }
+
+    }
+);
+
+
+/* =========================================================
+   DISCONNECT
+========================================================= */
+
+document.getElementById("disconnect").addEventListener(
+    "click",
+    () => {
+
+        if (
+            bluetoothDevice &&
+            bluetoothDevice.gatt &&
+            bluetoothDevice.gatt.connected
+        ) {
+
+            bluetoothDevice.gatt.disconnect();
+        }
+
+        onDisconnected();
+    }
+);
+
+
+function onDisconnected() {
+
+    writableCharacteristic = null;
+    bluetoothServer = null;
+
+    document.getElementById("print").disabled = true;
+    document.getElementById("disconnect").disabled = true;
+
+    setStatus(
+        "Printer disconnected."
+    );
+}
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function sleep(ms) {
+
+    return new Promise(
+        resolve => setTimeout(resolve, ms)
+    );
+}
+
+
+function escapeHtml(value) {
+
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+</script>
+
+</body>
+</html>
+```
