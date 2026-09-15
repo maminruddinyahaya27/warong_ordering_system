@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -684,4 +683,3 @@ function escapeHtml(value) {
 
 </body>
 </html>
-```
