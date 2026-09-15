@@ -1,0 +1,3186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Restaurant Kitchen System</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+
+      background: #071b1c;
+      color: #eaffff;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .header {
+      background: #0c292a;
+      border-bottom: 1px solid #1e4647;
+
+      padding: 18px 24px;
+
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      gap: 20px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .header p {
+      margin: 5px 0 0;
+
+      color: #8eaeaf;
+      font-size: 13px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      padding: 7px 11px;
+
+      border-radius: 8px;
+
+      background: #123536;
+      border: 1px solid #285758;
+
+      font-size: 12px;
+    }
+
+    .badge.online {
+      color: #8affad;
+      border-color: #277047;
+    }
+
+    .badge.offline {
+      color: #ff9999;
+      border-color: #713838;
+    }
+
+    .container {
+      max-width: 1450px;
+      margin: auto;
+
+      padding: 22px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+
+      gap: 20px;
+    }
+
+    .panel {
+      background: #0c2526;
+
+      border: 1px solid #1c4546;
+
+      border-radius: 14px;
+
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 16px 18px;
+
+      border-bottom: 1px solid #1c4546;
+
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      gap: 10px;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+
+      font-size: 16px;
+    }
+
+    .panel-body {
+      padding: 18px;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+
+      margin-bottom: 6px;
+
+      color: #8caeaf;
+
+      font-size: 12px;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+
+      padding: 10px 12px;
+
+      background: #071b1c;
+
+      color: white;
+
+      border: 1px solid #285657;
+
+      border-radius: 8px;
+
+      outline: none;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: #52a1a2;
+    }
+
+    textarea {
+      min-height: 75px;
+
+      resize: vertical;
+    }
+
+    .menu-grid {
+      display: grid;
+
+      grid-template-columns:
+        repeat(2, 1fr);
+
+      gap: 10px;
+    }
+
+    .menu-item {
+      padding: 13px;
+
+      background: #102f30;
+
+      color: white;
+
+      border: 1px solid #285657;
+
+      border-radius: 9px;
+
+      text-align: left;
+    }
+
+    .menu-item:hover {
+      background: #164344;
+    }
+
+    .menu-item strong {
+      display: block;
+
+      margin-bottom: 5px;
+    }
+
+    .menu-item small {
+      color: #8caeaf;
+    }
+
+    .cart {
+      margin-top: 18px;
+
+      padding-top: 15px;
+
+      border-top: 1px solid #1c4546;
+    }
+
+    .cart-row {
+      display: grid;
+
+      grid-template-columns:
+        1fr auto auto;
+
+      gap: 10px;
+
+      align-items: center;
+
+      padding: 10px 0;
+
+      border-bottom: 1px solid #173839;
+    }
+
+    .cart-info small {
+      display: block;
+
+      color: #789a9b;
+
+      font-size: 11px;
+
+      margin-top: 3px;
+    }
+
+    .qty {
+      display: flex;
+
+      align-items: center;
+
+      gap: 5px;
+    }
+
+    .qty button {
+      width: 28px;
+      height: 28px;
+
+      border-radius: 6px;
+
+      border: 1px solid #285657;
+
+      background: #123738;
+
+      color: white;
+    }
+
+    .summary {
+      margin-top: 15px;
+
+      padding-top: 12px;
+
+      border-top: 1px solid #1c4546;
+    }
+
+    .summary-row {
+      display: flex;
+
+      justify-content: space-between;
+
+      margin: 7px 0;
+
+      color: #b5cece;
+    }
+
+    .summary-row.total {
+      margin-top: 12px;
+
+      padding-top: 10px;
+
+      border-top: 1px solid #1c4546;
+
+      color: white;
+
+      font-size: 17px;
+
+      font-weight: bold;
+    }
+
+    .actions {
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 8px;
+
+      margin-top: 15px;
+    }
+
+    .btn {
+      padding: 9px 13px;
+
+      background: #153f40;
+
+      color: white;
+
+      border: 0;
+
+      border-radius: 8px;
+    }
+
+    .btn:hover {
+      background: #20595a;
+    }
+
+    .btn.primary {
+      background: #11785f;
+    }
+
+    .btn.primary:hover {
+      background: #15916f;
+    }
+
+    .btn.danger {
+      background: #743939;
+    }
+
+    .btn.small {
+      padding: 7px 10px;
+
+      font-size: 12px;
+    }
+
+    .ticket {
+      margin-bottom: 12px;
+
+      background: #071b1c;
+
+      border: 1px solid #285657;
+
+      border-radius: 10px;
+
+      overflow: hidden;
+    }
+
+    .ticket-header {
+      padding: 12px;
+
+      background: #102f30;
+
+      display: flex;
+
+      justify-content: space-between;
+
+      gap: 10px;
+    }
+
+    .ticket-header strong {
+      font-size: 14px;
+    }
+
+    .ticket-header small {
+      display: block;
+
+      color: #82a5a6;
+
+      margin-top: 4px;
+    }
+
+    .ticket-body {
+      padding: 12px;
+    }
+
+    .ticket-item {
+      display: flex;
+
+      justify-content: space-between;
+
+      gap: 10px;
+
+      padding: 7px 0;
+
+      border-bottom: 1px solid #173839;
+    }
+
+    .ticket-options {
+      margin-top: 4px;
+
+      color: #83a5a6;
+
+      font-size: 11px;
+    }
+
+    .ticket-note {
+      margin-top: 10px;
+
+      padding: 9px;
+
+      background: #102f30;
+
+      border-radius: 7px;
+
+      color: #b5cece;
+
+      font-size: 12px;
+    }
+
+    .kds-grid {
+      display: grid;
+
+      grid-template-columns:
+        repeat(4, 1fr);
+
+      gap: 12px;
+    }
+
+    .station {
+      min-height: 180px;
+
+      padding: 12px;
+
+      background: #071b1c;
+
+      border: 1px solid #285657;
+
+      border-radius: 10px;
+    }
+
+    .station h3 {
+      margin: 0 0 10px;
+
+      font-size: 14px;
+    }
+
+    .station-ticket {
+      margin-bottom: 8px;
+
+      padding: 9px;
+
+      background: #102f30;
+
+      border-radius: 7px;
+
+      font-size: 12px;
+    }
+
+    .station-ticket .time {
+      margin-top: 5px;
+
+      color: #76999a;
+    }
+
+    .empty {
+      padding: 20px 5px;
+
+      text-align: center;
+
+      color: #638687;
+
+      font-size: 12px;
+    }
+
+    .log {
+      max-height: 220px;
+
+      padding: 10px;
+
+      background: #051516;
+
+      border-radius: 8px;
+
+      color: #9ab8b9;
+
+      font-family: monospace;
+
+      font-size: 11px;
+
+      white-space: pre-wrap;
+
+      overflow-y: auto;
+    }
+
+    /* DRAWER */
+
+    .overlay {
+      position: fixed;
+
+      inset: 0;
+
+      background: rgba(0,0,0,.55);
+
+      z-index: 90;
+
+      display: none;
+    }
+
+    .overlay.show {
+      display: block;
+    }
+
+    .drawer {
+      position: fixed;
+
+      top: 0;
+      right: -460px;
+
+      width: 460px;
+
+      max-width: 100%;
+
+      height: 100vh;
+
+      padding: 20px;
+
+      background: #0b2425;
+
+      border-left: 1px solid #285657;
+
+      z-index: 100;
+
+      overflow-y: auto;
+
+      transition: right .25s ease;
+    }
+
+    .drawer.open {
+      right: 0;
+    }
+
+    .drawer h2 {
+      margin-top: 0;
+    }
+
+    .station-config {
+      padding: 13px;
+
+      margin-bottom: 10px;
+
+      background: #071b1c;
+
+      border: 1px solid #285657;
+
+      border-radius: 9px;
+    }
+
+    .station-config h3 {
+      margin: 0 0 10px;
+
+      font-size: 14px;
+    }
+
+    .status {
+      margin-top: 10px;
+
+      padding: 9px;
+
+      background: #102f30;
+
+      border-radius: 7px;
+
+      color: #9ebbbb;
+
+      font-size: 12px;
+    }
+
+    .status.good {
+      color: #8affad;
+    }
+
+    .status.bad {
+      color: #ff9999;
+    }
+
+    hr {
+      border: 0;
+
+      border-top: 1px solid #1c4546;
+
+      margin: 20px 0;
+    }
+
+    @media(max-width:1000px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .kds-grid {
+        grid-template-columns: repeat(2,1fr);
+      }
+    }
+
+    @media(max-width:600px) {
+      .header {
+        align-items: flex-start;
+
+        flex-direction: column;
+      }
+
+      .menu-grid,
+      .kds-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header class="header">
+
+  <div>
+    <h1>Restaurant Kitchen System</h1>
+
+    <p>
+      Vercel + Local Bluetooth Classic ESC/POS Bridge
+    </p>
+  </div>
+
+  <div class="header-right">
+
+    <div id="bridgeBadge"
+         class="badge offline">
+      Print Bridge: Checking...
+    </div>
+
+    <div class="badge">
+      Bluetooth Classic
+    </div>
+
+    <button
+      class="btn small"
+      onclick="openSettings()">
+      Printer Settings
+    </button>
+
+  </div>
+
+</header>
+
+
+<div class="container">
+
+  <!-- CUSTOMER / ORDER -->
+  <div class="grid">
+
+    <section class="panel">
+
+      <div class="panel-header">
+
+        <h2>Customer App</h2>
+
+        <span id="orderNumberLabel">
+          New Order
+        </span>
+
+      </div>
+
+      <div class="panel-body">
+
+        <div class="field">
+
+          <label>
+            Table Number
+          </label>
+
+          <input
+            id="tableNumber"
+            value="T01">
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Customer Name
+          </label>
+
+          <input
+            id="customerName"
+            placeholder="Optional">
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Menu
+          </label>
+
+          <div class="menu-grid">
+
+            <button
+              class="menu-item"
+              onclick="addItem('Burger')">
+
+              <strong>
+                Burger
+              </strong>
+
+              <small>
+                RM 12.00 · Griddle
+              </small>
+
+            </button>
+
+
+            <button
+              class="menu-item"
+              onclick="addItem('Chicken Chop')">
+
+              <strong>
+                Chicken Chop
+              </strong>
+
+              <small>
+                RM 18.00 · Griddle
+              </small>
+
+            </button>
+
+
+            <button
+              class="menu-item"
+              onclick="addItem('Nasi Goreng')">
+
+              <strong>
+                Nasi Goreng
+              </strong>
+
+              <small>
+                RM 10.00 · Wok
+              </small>
+
+            </button>
+
+
+            <button
+              class="menu-item"
+              onclick="addItem('Mee Goreng')">
+
+              <strong>
+                Mee Goreng
+              </strong>
+
+              <small>
+                RM 10.00 · Wok
+              </small>
+
+            </button>
+
+
+            <button
+              class="menu-item"
+              onclick="addItem('Fried Rice')">
+
+              <strong>
+                Fried Rice
+              </strong>
+
+              <small>
+                RM 9.00 · Kitchen
+              </small>
+
+            </button>
+
+
+            <button
+              class="menu-item"
+              onclick="addDrink()">
+
+              <strong>
+                Iced Lemon Tea
+              </strong>
+
+              <small>
+                RM 5.00 · Beverage
+              </small>
+
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <div class="cart">
+
+          <strong>
+            Cart
+          </strong>
+
+          <div id="cartItems"></div>
+
+
+          <div class="summary">
+
+            <div class="summary-row">
+
+              <span>
+                Subtotal
+              </span>
+
+              <span id="subtotal">
+                RM 0.00
+              </span>
+
+            </div>
+
+
+            <div class="summary-row">
+
+              <span>
+                Tax 6%
+              </span>
+
+              <span id="tax">
+                RM 0.00
+              </span>
+
+            </div>
+
+
+            <div class="summary-row total">
+
+              <span>
+                Total
+              </span>
+
+              <span id="total">
+                RM 0.00
+              </span>
+
+            </div>
+
+          </div>
+
+
+          <div class="field"
+               style="margin-top:15px">
+
+            <label>
+              Order Note
+            </label>
+
+            <textarea
+              id="orderNote"
+              placeholder="Example: No onion, less spicy..."></textarea>
+
+          </div>
+
+
+          <div class="actions">
+
+            <button
+              class="btn primary"
+              onclick="placeOrder()">
+
+              Place Order
+
+            </button>
+
+
+            <button
+              class="btn danger"
+              onclick="clearCart()">
+
+              Clear
+
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- TICKETS -->
+
+    <section class="panel">
+
+      <div class="panel-header">
+
+        <h2>
+          Kitchen Tickets
+        </h2>
+
+        <button
+          class="btn small"
+          onclick="clearTickets()">
+
+          Clear
+
+        </button>
+
+      </div>
+
+
+      <div class="panel-body">
+
+        <div id="tickets"></div>
+
+      </div>
+
+    </section>
+
+  </div>
+
+
+  <!-- KDS -->
+
+  <section
+    class="panel"
+    style="margin-top:20px">
+
+    <div class="panel-header">
+
+      <h2>
+        Kitchen Display System
+      </h2>
+
+      <button
+        class="btn small"
+        onclick="clearKDS()">
+
+        Clear
+
+      </button>
+
+    </div>
+
+
+    <div class="panel-body">
+
+      <div class="kds-grid">
+
+        <div class="station">
+
+          <h3>
+            🔥 Griddle
+          </h3>
+
+          <div id="kds-Griddle"></div>
+
+        </div>
+
+
+        <div class="station">
+
+          <h3>
+            🍳 Kitchen
+          </h3>
+
+          <div id="kds-Kitchen"></div>
+
+        </div>
+
+
+        <div class="station">
+
+          <h3>
+            🥢 Wok
+          </h3>
+
+          <div id="kds-Wok"></div>
+
+        </div>
+
+
+        <div class="station">
+
+          <h3>
+            🥤 Beverage
+          </h3>
+
+          <div id="kds-Beverage"></div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <!-- LOG -->
+
+  <section
+    class="panel"
+    style="margin-top:20px">
+
+    <div class="panel-header">
+
+      <h2>
+        System Log
+      </h2>
+
+    </div>
+
+    <div class="panel-body">
+
+      <div
+        id="log"
+        class="log"></div>
+
+    </div>
+
+  </section>
+
+</div>
+
+
+<!-- SETTINGS DRAWER -->
+
+<div
+  id="overlay"
+  class="overlay"
+  onclick="closeSettings()">
+</div>
+
+
+<div
+  id="drawer"
+  class="drawer">
+
+  <h2>
+    Printer Settings
+  </h2>
+
+
+  <div class="field">
+
+    <label>
+      Local Print Bridge
+    </label>
+
+    <input
+      id="bridgeUrl"
+      value="http://127.0.0.1:8765">
+
+    <div
+      style="
+        margin-top:7px;
+        color:#7f9fa0;
+        font-size:11px;
+      ">
+
+      This computer must be paired with the
+      Bluetooth Classic printer.
+
+    </div>
+
+  </div>
+
+
+  <div class="actions">
+
+    <button
+      class="btn primary"
+      onclick="saveBridgeSettings()">
+
+      Save
+
+    </button>
+
+
+    <button
+      class="btn"
+      onclick="checkBridge()">
+
+      Check
+
+    </button>
+
+  </div>
+
+
+  <div
+    id="bridgeStatus"
+    class="status">
+
+    Checking bridge...
+
+  </div>
+
+
+  <hr>
+
+
+  <h3>
+    Station Printers
+  </h3>
+
+
+  <div id="printerConfigs"></div>
+
+
+  <hr>
+
+
+  <h3>
+    How it works
+  </h3>
+
+
+  <div class="status">
+
+    <strong>
+      Vercel
+    </strong>
+
+    <br>
+
+    Your website hosts the restaurant interface.
+
+    <br><br>
+
+    <strong>
+      Local Bridge
+    </strong>
+
+    <br>
+
+    Python program running on the kitchen
+    computer.
+
+    <br><br>
+
+    <strong>
+      Bluetooth Classic
+    </strong>
+
+    <br>
+
+    Python communicates with the paired
+    thermal printer.
+
+  </div>
+
+
+  <button
+    class="btn"
+    style="
+      width:100%;
+      margin-top:20px;
+    "
+    onclick="closeSettings()">
+
+    Close
+
+  </button>
+
+</div>
+
+
+<script>
+
+  /*
+   * ============================================================
+   * CONFIGURATION
+   * ============================================================
+   */
+
+  const CONFIG = {
+
+    bridgeUrl:
+      localStorage.getItem(
+        "restaurant.bridgeUrl"
+      ) ||
+      "http://127.0.0.1:8765",
+
+    taxRate: 0.06
+
+  };
+
+
+  const STATIONS = [
+    "Griddle",
+    "Kitchen",
+    "Wok",
+    "Beverage"
+  ];
+
+
+  const MENU = {
+
+    "Burger": {
+      price: 12,
+      station: "Griddle"
+    },
+
+    "Chicken Chop": {
+      price: 18,
+      station: "Griddle"
+    },
+
+    "Nasi Goreng": {
+      price: 10,
+      station: "Wok"
+    },
+
+    "Mee Goreng": {
+      price: 10,
+      station: "Wok"
+    },
+
+    "Fried Rice": {
+      price: 9,
+      station: "Kitchen"
+    },
+
+    "Iced Lemon Tea": {
+      price: 5,
+      station: "Beverage"
+    }
+
+  };
+
+
+  /*
+   * Printer names saved locally.
+   *
+   * Example:
+   *
+   * {
+   *   "Griddle": "POS-58",
+   *   "Kitchen": "POS-80",
+   *   "Wok": "POS-58-2",
+   *   "Beverage": "DRINK-PRINTER"
+   * }
+   */
+
+  const stationPrinters =
+    JSON.parse(
+      localStorage.getItem(
+        "restaurant.printers"
+      ) || "{}"
+    );
+
+
+  let cart = [];
+
+  let tickets = [];
+
+  let orderSequence =
+    Number(
+      localStorage.getItem(
+        "restaurant.orderSequence"
+      ) || "1000"
+    );
+
+
+  /*
+   * ============================================================
+   * HELPERS
+   * ============================================================
+   */
+
+  function money(value) {
+
+    return "RM " +
+      Number(value).toFixed(2);
+
+  }
+
+
+  function log(message) {
+
+    const element =
+      document.getElementById("log");
+
+    const time =
+      new Date().toLocaleTimeString();
+
+    element.textContent =
+      `[${time}] ${message}\n` +
+      element.textContent;
+
+  }
+
+
+  function escapeHtml(value) {
+
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  }
+
+
+  /*
+   * ============================================================
+   * CART
+   * ============================================================
+   */
+
+  function addItem(name) {
+
+    const menu =
+      MENU[name];
+
+    if (!menu) return;
+
+
+    const existing =
+      cart.find(
+        item =>
+          item.name === name &&
+          !Object.keys(
+            item.options || {}
+          ).length
+      );
+
+
+    if (existing) {
+
+      existing.qty++;
+
+    } else {
+
+      cart.push({
+
+        id:
+          crypto.randomUUID(),
+
+        name,
+
+        price:
+          menu.price,
+
+        station:
+          menu.station,
+
+        qty: 1,
+
+        options: {}
+
+      });
+
+    }
+
+
+    renderCart();
+
+  }
+
+
+  function addDrink() {
+
+    const sweetness =
+      prompt(
+        "Sweetness?\n\nNormal\nLess\nNo Sugar",
+        "Normal"
+      ) ||
+      "Normal";
+
+
+    const ice =
+      prompt(
+        "Ice?\n\nNormal\nLess\nNo Ice",
+        "Normal"
+      ) ||
+      "Normal";
+
+
+    cart.push({
+
+      id:
+        crypto.randomUUID(),
+
+      name:
+        "Iced Lemon Tea",
+
+      price: 5,
+
+      station:
+        "Beverage",
+
+      qty: 1,
+
+      options: {
+        sweetness,
+        ice
+      }
+
+    });
+
+
+    renderCart();
+
+  }
+
+
+  function changeQty(index, amount) {
+
+    if (!cart[index]) return;
+
+
+    cart[index].qty += amount;
+
+
+    if (cart[index].qty <= 0) {
+
+      cart.splice(index, 1);
+
+    }
+
+
+    renderCart();
+
+  }
+
+
+  function clearCart() {
+
+    cart = [];
+
+    renderCart();
+
+  }
+
+
+  function renderCart() {
+
+    const element =
+      document.getElementById(
+        "cartItems"
+      );
+
+
+    if (!cart.length) {
+
+      element.innerHTML =
+        `<div class="empty">
+          Cart is empty
+        </div>`;
+
+    } else {
+
+      element.innerHTML =
+        cart.map(
+          (item, index) => {
+
+            let options = "";
+
+
+            if (
+              item.options &&
+              Object.keys(
+                item.options
+              ).length
+            ) {
+
+              options =
+                Object.entries(
+                  item.options
+                )
+                .map(
+                  ([key, value]) =>
+                    `${key}: ${value}`
+                )
+                .join(" · ");
+
+            }
+
+
+            return `
+
+              <div class="cart-row">
+
+                <div class="cart-info">
+
+                  <strong>
+                    ${escapeHtml(
+                      item.name
+                    )}
+                  </strong>
+
+                  <small>
+
+                    ${escapeHtml(
+                      item.station
+                    )}
+
+                    ${
+                      options
+                      ? " · " +
+                        escapeHtml(
+                          options
+                        )
+                      : ""
+                    }
+
+                  </small>
+
+                </div>
+
+
+                <div class="qty">
+
+                  <button
+                    onclick="
+                      changeQty(
+                        ${index},
+                        -1
+                      )
+                    ">
+
+                    −
+
+                  </button>
+
+                  <span>
+                    ${item.qty}
+                  </span>
+
+                  <button
+                    onclick="
+                      changeQty(
+                        ${index},
+                        1
+                      )
+                    ">
+
+                    +
+
+                  </button>
+
+                </div>
+
+
+                <div>
+
+                  ${money(
+                    item.price *
+                    item.qty
+                  )}
+
+                </div>
+
+              </div>
+
+            `;
+
+          }
+        )
+        .join("");
+
+    }
+
+
+    const subtotal =
+      cart.reduce(
+        (sum, item) =>
+          sum +
+          item.price *
+          item.qty,
+        0
+      );
+
+
+    const tax =
+      subtotal *
+      CONFIG.taxRate;
+
+
+    const total =
+      subtotal +
+      tax;
+
+
+    document.getElementById(
+      "subtotal"
+    ).textContent =
+      money(subtotal);
+
+
+    document.getElementById(
+      "tax"
+    ).textContent =
+      money(tax);
+
+
+    document.getElementById(
+      "total"
+    ).textContent =
+      money(total);
+
+  }
+
+
+  /*
+   * ============================================================
+   * ORDER
+   * ============================================================
+   */
+
+  function placeOrder() {
+
+    if (!cart.length) {
+
+      alert(
+        "Cart is empty."
+      );
+
+      return;
+
+    }
+
+
+    orderSequence++;
+
+
+    localStorage.setItem(
+      "restaurant.orderSequence",
+      orderSequence
+    );
+
+
+    const order = {
+
+      number:
+        orderSequence,
+
+      table:
+        document.getElementById(
+          "tableNumber"
+        ).value || "N/A",
+
+      customer:
+        document.getElementById(
+          "customerName"
+        ).value || "",
+
+      note:
+        document.getElementById(
+          "orderNote"
+        ).value || "",
+
+      items:
+        structuredClone(cart),
+
+      createdAt:
+        new Date().toISOString()
+
+    };
+
+
+    document.getElementById(
+      "orderNumberLabel"
+    ).textContent =
+      "#" + order.number;
+
+
+    createTickets(order);
+
+
+    log(
+      `Order #${order.number} created`
+    );
+
+
+    cart = [];
+
+
+    document.getElementById(
+      "customerName"
+    ).value = "";
+
+
+    document.getElementById(
+      "orderNote"
+    ).value = "";
+
+
+    renderCart();
+
+  }
+
+
+  /*
+   * ============================================================
+   * CREATE STATION TICKETS
+   * ============================================================
+   */
+
+  function createTickets(order) {
+
+    const grouped = {};
+
+
+    order.items.forEach(
+      item => {
+
+        if (
+          !grouped[item.station]
+        ) {
+
+          grouped[item.station] = [];
+
+        }
+
+
+        grouped[item.station]
+          .push(item);
+
+      }
+    );
+
+
+    Object.entries(grouped)
+      .forEach(
+        ([station, items]) => {
+
+          const ticket = {
+
+            id:
+              crypto.randomUUID(),
+
+            orderNumber:
+              order.number,
+
+            table:
+              order.table,
+
+            customer:
+              order.customer,
+
+            note:
+              order.note,
+
+            station,
+
+            items,
+
+            createdAt:
+              new Date()
+                .toISOString()
+
+          };
+
+
+          tickets.unshift(ticket);
+
+
+          renderTickets();
+
+          renderKDS();
+
+
+          /*
+           * Automatically print.
+           */
+
+          printTicket(ticket);
+
+        }
+      );
+
+  }
+
+
+  /*
+   * ============================================================
+   * RENDER TICKETS
+   * ============================================================
+   */
+
+  function renderTickets() {
+
+    const element =
+      document.getElementById(
+        "tickets"
+      );
+
+
+    if (!tickets.length) {
+
+      element.innerHTML =
+        `<div class="empty">
+          No kitchen tickets yet.
+        </div>`;
+
+      return;
+
+    }
+
+
+    element.innerHTML =
+      tickets.map(
+        ticket => `
+
+          <div class="ticket">
+
+            <div class="ticket-header">
+
+              <div>
+
+                <strong>
+                  #${ticket.orderNumber}
+                  ·
+                  ${escapeHtml(
+                    ticket.station
+                  )}
+                </strong>
+
+                <small>
+                  Table
+                  ${escapeHtml(
+                    ticket.table
+                  )}
+                </small>
+
+              </div>
+
+
+              <small>
+
+                ${new Date(
+                  ticket.createdAt
+                ).toLocaleTimeString()}
+
+              </small>
+
+            </div>
+
+
+            <div class="ticket-body">
+
+              ${ticket.items.map(
+                item => `
+
+                  <div class="ticket-item">
+
+                    <span>
+
+                      ${item.qty}
+                      ×
+                      ${escapeHtml(
+                        item.name
+                      )}
+
+                      ${
+                        item.options &&
+                        Object.keys(
+                          item.options
+                        ).length
+                        ? `
+
+                          <div
+                            class="ticket-options">
+
+                            ${
+                              Object.entries(
+                                item.options
+                              )
+                              .map(
+                                ([key, value]) =>
+                                  `${key}: ${escapeHtml(value)}`
+                              )
+                              .join(" · ")
+                            }
+
+                          </div>
+
+                        `
+                        : ""
+                      }
+
+                    </span>
+
+
+                    <span>
+
+                      ${money(
+                        item.price *
+                        item.qty
+                      )}
+
+                    </span>
+
+                  </div>
+
+                `
+              ).join("")}
+
+
+              ${
+                ticket.note
+                ? `
+
+                  <div
+                    class="ticket-note">
+
+                    <strong>
+                      Note:
+                    </strong>
+
+                    ${escapeHtml(
+                      ticket.note
+                    )}
+
+                  </div>
+
+                `
+                : ""
+              }
+
+
+              <div class="actions">
+
+                <button
+                  class="btn small"
+                  onclick="
+                    printTicketById(
+                      '${ticket.id}'
+                    )
+                  ">
+
+                  Print
+
+                </button>
+
+
+                <button
+                  class="btn small"
+                  onclick="
+                    browserPrint(
+                      '${ticket.id}'
+                    )
+                  ">
+
+                  Browser Print
+
+                </button>
+
+
+                <button
+                  class="btn small"
+                  onclick="
+                    simulatePrint(
+                      '${ticket.id}'
+                    )
+                  ">
+
+                  Simulate
+
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        `
+      ).join("");
+
+  }
+
+
+  /*
+   * ============================================================
+   * ESC/POS BUILDER
+   * ============================================================
+   */
+
+  function buildEscPos(ticket) {
+
+    const output = [];
+
+
+    function push(...values) {
+
+      output.push(...values);
+
+    }
+
+
+    function text(value) {
+
+      const encoder =
+        new TextEncoder();
+
+      push(
+        ...encoder.encode(
+          value
+        )
+      );
+
+    }
+
+
+    /*
+     * Initialize
+     */
+
+    push(
+      0x1b,
+      0x40
+    );
+
+
+    /*
+     * Center
+     */
+
+    push(
+      0x1b,
+      0x61,
+      0x01
+    );
+
+
+    /*
+     * Bold
+     */
+
+    push(
+      0x1b,
+      0x45,
+      0x01
+    );
+
+
+    text(
+      "KITCHEN TICKET\n"
+    );
+
+
+    push(
+      0x1b,
+      0x45,
+      0x00
+    );
+
+
+    text(
+      `ORDER #${ticket.orderNumber}\n`
+    );
+
+
+    text(
+      `TABLE ${ticket.table}\n`
+    );
+
+
+    text(
+      `${ticket.station.toUpperCase()}\n`
+    );
+
+
+    text(
+      "--------------------------------\n"
+    );
+
+
+    /*
+     * Left align
+     */
+
+    push(
+      0x1b,
+      0x61,
+      0x00
+    );
+
+
+    ticket.items.forEach(
+      item => {
+
+        push(
+          0x1b,
+          0x45,
+          0x01
+        );
+
+
+        text(
+          `${item.qty} x ${item.name}\n`
+        );
+
+
+        push(
+          0x1b,
+          0x45,
+          0x00
+        );
+
+
+        if (
+          item.options &&
+          item.options.sweetness
+        ) {
+
+          text(
+            `   Sweetness: ${item.options.sweetness}\n`
+          );
+
+        }
+
+
+        if (
+          item.options &&
+          item.options.ice
+        ) {
+
+          text(
+            `   Ice: ${item.options.ice}\n`
+          );
+
+        }
+
+      }
+    );
+
+
+    if (ticket.note) {
+
+      text(
+        "\nNOTE:\n"
+      );
+
+
+      text(
+        `${ticket.note}\n`
+      );
+
+    }
+
+
+    text(
+      "--------------------------------\n"
+    );
+
+
+    text(
+      new Date(
+        ticket.createdAt
+      ).toLocaleString()
+      + "\n"
+    );
+
+
+    text(
+      "\n\n\n"
+    );
+
+
+    /*
+     * Cut paper
+     */
+
+    push(
+      0x1d,
+      0x56,
+      0x00
+    );
+
+
+    return new Uint8Array(
+      output
+    );
+
+  }
+
+
+  /*
+   * ============================================================
+   * BYTE → BASE64
+   * ============================================================
+   */
+
+  function bytesToBase64(bytes) {
+
+    let binary = "";
+
+    const chunkSize =
+      0x8000;
+
+
+    for (
+      let i = 0;
+      i < bytes.length;
+      i += chunkSize
+    ) {
+
+      binary +=
+        String.fromCharCode(
+          ...bytes.subarray(
+            i,
+            i + chunkSize
+          )
+        );
+
+    }
+
+
+    return btoa(
+      binary
+    );
+
+  }
+
+
+  /*
+   * ============================================================
+   * PRINT THROUGH PYTHON BRIDGE
+   * ============================================================
+   */
+
+  async function printTicket(ticket) {
+
+    const bridgeUrl =
+      CONFIG.bridgeUrl
+        .replace(/\/$/, "");
+
+
+    const printer =
+      stationPrinters[
+        ticket.station
+      ];
+
+
+    if (!printer) {
+
+      log(
+        `No printer configured for ${ticket.station}`
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      const escpos =
+        buildEscPos(
+          ticket
+        );
+
+
+      const base64 =
+        bytesToBase64(
+          escpos
+        );
+
+
+      log(
+        `Printing #${ticket.orderNumber} → ${printer}`
+      );
+
+
+      const controller =
+        new AbortController();
+
+
+      const timeout =
+        setTimeout(
+          () =>
+            controller.abort(),
+          8000
+        );
+
+
+      const response =
+        await fetch(
+          `${bridgeUrl}/print`,
+          {
+
+            method:
+              "POST",
+
+            headers: {
+
+              "Content-Type":
+                "application/json"
+
+            },
+
+            body:
+              JSON.stringify({
+
+                station:
+                  ticket.station,
+
+                printer:
+                  printer,
+
+                order:
+                  ticket.orderNumber,
+
+                encoding:
+                  "base64",
+
+                data:
+                  base64
+
+              }),
+
+            signal:
+              controller.signal
+
+          }
+        );
+
+
+      clearTimeout(
+        timeout
+      );
+
+
+      if (!response.ok) {
+
+        const message =
+          await response.text();
+
+
+        throw new Error(
+          message ||
+          `HTTP ${response.status}`
+        );
+
+      }
+
+
+      log(
+        `Printed #${ticket.orderNumber} → ${printer}`
+      );
+
+
+    } catch (error) {
+
+      console.error(
+        error
+      );
+
+
+      log(
+        `PRINT FAILED #${ticket.orderNumber}: ${error.message}`
+      );
+
+    }
+
+  }
+
+
+  function printTicketById(id) {
+
+    const ticket =
+      tickets.find(
+        t => t.id === id
+      );
+
+
+    if (ticket) {
+
+      printTicket(
+        ticket
+      );
+
+    }
+
+  }
+
+
+  /*
+   * ============================================================
+   * BROWSER PRINT FALLBACK
+   * ============================================================
+   */
+
+  function browserPrint(id) {
+
+    const ticket =
+      tickets.find(
+        t => t.id === id
+      );
+
+
+    if (!ticket) return;
+
+
+    const popup =
+      window.open(
+        "",
+        "_blank",
+        "width=400,height=700"
+      );
+
+
+    if (!popup) {
+
+      alert(
+        "Please allow popups."
+      );
+
+      return;
+
+    }
+
+
+    popup.document.write(`
+
+      <!DOCTYPE html>
+
+      <html>
+
+      <head>
+
+        <title>
+          Order #${ticket.orderNumber}
+        </title>
+
+        <style>
+
+          body {
+            width: 280px;
+            margin: 20px auto;
+            font-family: monospace;
+          }
+
+          h2 {
+            text-align:center;
+          }
+
+          .line {
+            border-top:1px dashed #000;
+            margin:10px 0;
+          }
+
+          .item {
+            margin:8px 0;
+          }
+
+        </style>
+
+      </head>
+
+
+      <body>
+
+        <h2>
+          KITCHEN
+        </h2>
+
+
+        <strong>
+          ORDER #${ticket.orderNumber}
+        </strong>
+
+        <br>
+
+        TABLE:
+        ${escapeHtml(
+          ticket.table
+        )}
+
+        <br>
+
+        STATION:
+        ${escapeHtml(
+          ticket.station
+        )}
+
+
+        <div class="line"></div>
+
+
+        ${ticket.items.map(
+          item => `
+
+            <div class="item">
+
+              <strong>
+                ${item.qty}
+                ×
+                ${escapeHtml(
+                  item.name
+                )}
+              </strong>
+
+              ${
+                item.options &&
+                Object.keys(
+                  item.options
+                ).length
+                ? `
+                  <br>
+                  ${Object.entries(
+                    item.options
+                  )
+                  .map(
+                    ([key,value]) =>
+                      `${escapeHtml(key)}: ${escapeHtml(value)}`
+                  )
+                  .join("<br>")}
+                `
+                : ""
+              }
+
+            </div>
+
+          `
+        ).join("")}
+
+
+        ${
+          ticket.note
+          ? `
+
+            <div class="line"></div>
+
+            <strong>
+              NOTE:
+            </strong>
+
+            <br>
+
+            ${escapeHtml(
+              ticket.note
+            )}
+
+          `
+          : ""
+        }
+
+
+        <div class="line"></div>
+
+
+        ${new Date(
+          ticket.createdAt
+        ).toLocaleString()}
+
+
+        <script>
+
+          window.onload = function() {
+
+            window.print();
+
+            setTimeout(
+              function() {
+                window.close();
+              },
+              1000
+            );
+
+          };
+
+        <\/script>
+
+      </body>
+
+      </html>
+
+    `);
+
+
+    popup.document.close();
+
+  }
+
+
+  /*
+   * ============================================================
+   * SIMULATION
+   * ============================================================
+   */
+
+  function simulatePrint(id) {
+
+    const ticket =
+      tickets.find(
+        t => t.id === id
+      );
+
+
+    if (!ticket) return;
+
+
+    log(
+      `[SIMULATED] #${ticket.orderNumber} → ${ticket.station}`
+    );
+
+  }
+
+
+  /*
+   * ============================================================
+   * KDS
+   * ============================================================
+   */
+
+  function renderKDS() {
+
+    STATIONS.forEach(
+      station => {
+
+        const element =
+          document.getElementById(
+            `kds-${station}`
+          );
+
+
+        const stationTickets =
+          tickets.filter(
+            ticket =>
+              ticket.station ===
+              station
+          );
+
+
+        if (!stationTickets.length) {
+
+          element.innerHTML =
+            `<div class="empty">
+              No orders
+            </div>`;
+
+          return;
+
+        }
+
+
+        element.innerHTML =
+          stationTickets
+            .slice(0,10)
+            .map(
+              ticket => `
+
+                <div
+                  class="station-ticket">
+
+                  <strong>
+                    #${ticket.orderNumber}
+                  </strong>
+
+                  · Table
+                  ${escapeHtml(
+                    ticket.table
+                  )}
+
+                  <br><br>
+
+                  ${ticket.items
+                    .map(
+                      item =>
+                        `${item.qty} × ${escapeHtml(item.name)}`
+                    )
+                    .join("<br>")}
+
+                  <div class="time">
+
+                    ${new Date(
+                      ticket.createdAt
+                    ).toLocaleTimeString()}
+
+                  </div>
+
+                </div>
+
+              `
+            )
+            .join("");
+
+      }
+    );
+
+  }
+
+
+  function clearTickets() {
+
+    tickets = [];
+
+    renderTickets();
+
+    renderKDS();
+
+    log(
+      "Tickets cleared."
+    );
+
+  }
+
+
+  function clearKDS() {
+
+    tickets = [];
+
+    renderTickets();
+
+    renderKDS();
+
+    log(
+      "KDS cleared."
+    );
+
+  }
+
+
+  /*
+   * ============================================================
+   * SETTINGS
+   * ============================================================
+   */
+
+  function openSettings() {
+
+    document
+      .getElementById(
+        "drawer"
+      )
+      .classList.add(
+        "open"
+      );
+
+
+    document
+      .getElementById(
+        "overlay"
+      )
+      .classList.add(
+        "show"
+      );
+
+
+    document
+      .getElementById(
+        "bridgeUrl"
+      )
+      .value =
+      CONFIG.bridgeUrl;
+
+
+    renderPrinterConfigs();
+
+    checkBridge();
+
+  }
+
+
+  function closeSettings() {
+
+    document
+      .getElementById(
+        "drawer"
+      )
+      .classList.remove(
+        "open"
+      );
+
+
+    document
+      .getElementById(
+        "overlay"
+      )
+      .classList.remove(
+        "show"
+      );
+
+  }
+
+
+  function saveBridgeSettings() {
+
+    const value =
+      document
+        .getElementById(
+          "bridgeUrl"
+        )
+        .value
+        .trim()
+        .replace(
+          /\/$/,
+          ""
+        );
+
+
+    CONFIG.bridgeUrl =
+      value;
+
+
+    localStorage.setItem(
+      "restaurant.bridgeUrl",
+      value
+    );
+
+
+    log(
+      `Bridge URL: ${value}`
+    );
+
+
+    checkBridge();
+
+  }
+
+
+  function renderPrinterConfigs() {
+
+    const container =
+      document.getElementById(
+        "printerConfigs"
+      );
+
+
+    container.innerHTML =
+      STATIONS.map(
+        station => {
+
+          const current =
+            stationPrinters[
+              station
+            ] || "";
+
+
+          return `
+
+            <div
+              class="station-config">
+
+              <h3>
+                ${station}
+              </h3>
+
+
+              <label>
+                Bluetooth printer name
+              </label>
+
+
+              <input
+                id="printer-${station}"
+                value="${escapeHtml(
+                  current
+                )}"
+                placeholder="Example: POS-58">
+
+
+              <div class="actions">
+
+                <button
+                  class="btn small"
+                  onclick="
+                    savePrinter(
+                      '${station}'
+                    )
+                  ">
+
+                  Save
+
+                </button>
+
+
+                <button
+                  class="btn small"
+                  onclick="
+                    testPrinter(
+                      '${station}'
+                    )
+                  ">
+
+                  Test Print
+
+                </button>
+
+              </div>
+
+            </div>
+
+          `;
+
+        }
+      ).join("");
+
+  }
+
+
+  function savePrinter(station) {
+
+    const value =
+      document
+        .getElementById(
+          `printer-${station}`
+        )
+        .value
+        .trim();
+
+
+    stationPrinters[
+      station
+    ] = value;
+
+
+    localStorage.setItem(
+      "restaurant.printers",
+      JSON.stringify(
+        stationPrinters
+      )
+    );
+
+
+    log(
+      `${station} printer = ${value}`
+    );
+
+  }
+
+
+  /*
+   * ============================================================
+   * TEST PRINTER
+   * ============================================================
+   */
+
+  async function testPrinter(station) {
+
+    const printer =
+      stationPrinters[
+        station
+      ];
+
+
+    if (!printer) {
+
+      alert(
+        `Configure ${station} printer first.`
+      );
+
+      return;
+
+    }
+
+
+    const ticket = {
+
+      id:
+        crypto.randomUUID(),
+
+      orderNumber:
+        "TEST",
+
+      table:
+        "TEST",
+
+      customer:
+        "",
+
+      note:
+        "Bluetooth Classic test print",
+
+      station,
+
+      items: [
+
+        {
+
+          name:
+            "TEST PRINT",
+
+          price:
+            0,
+
+          qty:
+            1,
+
+          options: {}
+
+        }
+
+      ],
+
+      createdAt:
+        new Date().toISOString()
+
+    };
+
+
+    await printTicket(
+      ticket
+    );
+
+  }
+
+
+  /*
+   * ============================================================
+   * BRIDGE HEALTH
+   * ============================================================
+   */
+
+  async function checkBridge() {
+
+    const badge =
+      document.getElementById(
+        "bridgeBadge"
+      );
+
+
+    const status =
+      document.getElementById(
+        "bridgeStatus"
+      );
+
+
+    badge.className =
+      "badge offline";
+
+
+    badge.textContent =
+      "Print Bridge: Checking...";
+
+
+    if (status) {
+
+      status.className =
+        "status";
+
+      status.textContent =
+        "Checking...";
+
+    }
+
+
+    try {
+
+      const controller =
+        new AbortController();
+
+
+      const timeout =
+        setTimeout(
+          () =>
+            controller.abort(),
+          3000
+        );
+
+
+      const response =
+        await fetch(
+          `${CONFIG.bridgeUrl}/health`,
+          {
+
+            method:
+              "GET",
+
+            cache:
+              "no-store",
+
+            signal:
+              controller.signal
+
+          }
+        );
+
+
+      clearTimeout(
+        timeout
+      );
+
+
+      if (!response.ok) {
+
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+
+      }
+
+
+      const data =
+        await response.json()
+          .catch(
+            () => ({})
+          );
+
+
+      badge.className =
+        "badge online";
+
+
+      badge.textContent =
+        "Print Bridge: Online";
+
+
+      if (status) {
+
+        status.className =
+          "status good";
+
+        status.textContent =
+          "Print bridge is online.";
+
+      }
+
+
+      log(
+        "Print bridge online."
+      );
+
+
+    } catch (error) {
+
+      badge.className =
+        "badge offline";
+
+
+      badge.textContent =
+        "Print Bridge: Offline";
+
+
+      if (status) {
+
+        status.className =
+          "status bad";
+
+        status.textContent =
+          "Bridge unavailable: " +
+          error.message;
+
+      }
+
+
+      log(
+        "Print bridge offline."
+      );
+
+    }
+
+  }
+
+
+  /*
+   * ============================================================
+   * START
+   * ============================================================
+   */
+
+  renderCart();
+
+  renderTickets();
+
+  renderKDS();
+
+  log(
+    "Restaurant system started."
+  );
+
+  log(
+    `Bridge: ${CONFIG.bridgeUrl}`
+  );
+
+  checkBridge();
+
+</script>
+
+</body>
+</html>
