@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Event Log · Restaurant Order-to-Kitchen</title>
+<style>
+  :root{
+    /* base #152D35 (dark teal); text #D4ECDD (pale mint) */
+    --base:#152D35; --ink:#D4ECDD;
+    --bg:#152D35; --panel:#1B3A44; --panel2:#214450; --line:#2E5765;
+    --text:#D4ECDD; --muted:#8FB3A9; --accent:#D4ECDD; --accent-ink:#152D35;
+    --ok:#7FD8A0; --warn:#F0C878; --err:#F08C8C; --mono:"SFMono-Regular",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;
+         background:var(--base);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+  .badge{font-size:11px;padding:3px 8px;border-radius:999px;background:var(--panel2);
+         color:var(--muted);border:1px solid var(--line)}
+  .spacer{flex:1}
+  a.ghost,button.ghost{text-decoration:none;background:var(--panel2);color:var(--text);
+    border:1px solid var(--line);border-radius:9px;padding:9px 13px;font-weight:600;
+    font-size:13px;cursor:pointer;display:inline-flex;align-items:center}
+  a.ghost:hover,button.ghost:hover{border-color:var(--accent)}
+  main{padding:14px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  section>h2{font-size:12px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);
+             margin:0;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel2);
+             display:flex;align-items:center;gap:10px}
+  section>h2 .count{color:var(--accent);font-family:var(--mono)}
+  section>h2 .spacer{flex:1}
+  .body{padding:0}
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;
+     letter-spacing:.7px;padding:8px 14px;border-bottom:1px solid var(--line)}
+  td{padding:7px 14px;border-bottom:1px dotted var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td.time{color:var(--muted);white-space:nowrap;width:150px}
+  td.lvl{width:70px}
+  .lv{font-size:10px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .lv.ok{color:var(--ok);border-color:var(--ok)}
+  .lv.err{color:var(--err);border-color:var(--err)}
+  .lv.warn{color:var(--warn);border-color:var(--warn)}
+  .empty{color:var(--muted);font-size:12px;text-align:center;padding:30px 6px}
+  .msg{word-break:break-word}
+</style>
+</head>
+<body>
+<header>
+  <h1>Event Log</h1>
+  <span class="badge" id="liveBadge">live</span>
+  <span class="spacer"></span>
+  <button class="ghost" id="btnRefresh">Refresh</button>
+  <button class="ghost" id="btnClear">Clear</button>
+  <a class="ghost" href="index.html">Back to Order Screen</a>
+</header>
+
+<main>
+  <section>
+    <h2>Events <span class="count" id="count">0</span><span class="spacer"></span>
+      <span style="font-weight:400;text-transform:none;letter-spacing:0">auto-refresh 2s</span></h2>
+    <div class="body" id="logBody"><div class="empty">No events yet.</div></div>
+  </section>
+</main>
+
+<script>
+const LOG_KEY = 'rkitchen.eventlog';
+
+function levelClass(kind){
+  return kind === 'err' ? 'err' : kind === 'ok' ? 'ok' : kind === 'warn' ? 'warn' : '';
+}
+function levelLabel(kind){
+  return kind === 'err' ? 'ERROR' : kind === 'ok' ? 'OK' : kind === 'warn' ? 'WARN' : 'INFO';
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+  ));
+}
+
+function readEntries(){
+  try {
+    const raw = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch (e){ return []; }
+}
+
+function render(){
+  const entries = readEntries().slice().reverse();   // newest first
+  const body = document.getElementById('logBody');
+  document.getElementById('count').textContent = entries.length;
+
+  if (!entries.length){
+    body.innerHTML = '<div class="empty">No events yet. Place an order on the order screen.</div>';
+    return;
+  }
+  const rows = entries.map(e => `
+    <tr>
+      <td class="time">${escapeHtml(new Date(e.ts).toLocaleString())}</td>
+      <td class="lvl"><span class="lv ${levelClass(e.kind)}">${levelLabel(e.kind)}</span></td>
+      <td class="msg">${escapeHtml(e.msg)}</td>
+    </tr>`).join('');
+  body.innerHTML = `<table><thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
+                    <tbody>${rows}</tbody></table>`;
+}
+
+document.getElementById('btnRefresh').onclick = render;
+document.getElementById('btnClear').onclick = () => {
+  try { localStorage.removeItem(LOG_KEY); } catch (e){}
+  render();
+};
+window.addEventListener('storage', e => { if (e.key === LOG_KEY) render(); });
+
+render();
+setInterval(render, 2000);
+</script>
+</body>
+</html>

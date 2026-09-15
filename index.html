@@ -1,0 +1,3963 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restaurant Order-to-Kitchen</title>
+
+<style>
+:root{
+  --base:#152D35;
+  --ink:#D4ECDD;
+  --bg:#152D35;
+  --panel:#1B3A44;
+  --panel2:#214450;
+  --line:#2E5765;
+  --text:#D4ECDD;
+  --muted:#8FB3A9;
+  --accent:#D4ECDD;
+  --accent-ink:#152D35;
+  --ok:#7FD8A0;
+  --warn:#F0C878;
+  --err:#F08C8C;
+  --mono:"SFMono-Regular",Menlo,Consolas,monospace;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+
+header{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:12px 18px;
+  background:var(--base);
+  border-bottom:1px solid var(--line);
+  position:sticky;
+  top:0;
+  z-index:10;
+}
+
+header h1{
+  font-size:15px;
+  margin:0;
+  font-weight:600;
+}
+
+.badge{
+  font-size:11px;
+  padding:3px 8px;
+  border-radius:999px;
+  background:var(--panel2);
+  color:var(--muted);
+  border:1px solid var(--line);
+}
+
+.badge.on{
+  color:var(--base);
+  background:var(--ok);
+  border-color:var(--ok);
+}
+
+.badge.warn{
+  color:var(--base);
+  background:var(--warn);
+  border-color:var(--warn);
+}
+
+.spacer{flex:1}
+
+main{
+  display:grid;
+  grid-template-columns:1.15fr .85fr;
+  gap:14px;
+  padding:14px;
+  align-items:start;
+}
+
+@media(max-width:760px){
+  main{grid-template-columns:1fr}
+}
+
+section{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  overflow:hidden;
+}
+
+section>h2{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.9px;
+  color:var(--muted);
+  margin:0;
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  background:var(--panel2);
+}
+
+.body{padding:12px}
+
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.item{
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  padding:9px 10px;
+  cursor:pointer;
+  transition:.15s;
+  user-select:none;
+}
+
+.item:hover{
+  border-color:var(--accent);
+  transform:translateY(-1px);
+}
+
+.item .n{
+  font-weight:600;
+  font-size:13px;
+}
+
+.item .m{
+  color:var(--muted);
+  font-size:11px;
+  margin-top:2px;
+}
+
+.item .p{
+  color:var(--accent);
+  font-size:12px;
+  margin-top:5px;
+  font-weight:600;
+}
+
+.cart{min-height:60px}
+
+.line{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 0;
+  border-bottom:1px dashed var(--line);
+}
+
+.line:last-child{border-bottom:0}
+
+.line .nm{
+  flex:1;
+  font-size:13px;
+}
+
+.line .q{
+  color:var(--muted);
+  font-family:var(--mono);
+  font-size:12px;
+}
+
+.line .lt{
+  font-family:var(--mono);
+  font-size:12px;
+  min-width:52px;
+  text-align:right;
+}
+
+.line button{
+  background:none;
+  border:0;
+  color:var(--err);
+  cursor:pointer;
+  font-size:14px;
+  padding:0 2px;
+}
+
+.stepper{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid var(--line);
+  border-radius:7px;
+  overflow:hidden;
+}
+
+.stepper button{
+  background:var(--panel);
+  color:var(--text);
+  border:0;
+  width:24px;
+  height:24px;
+  font-size:14px;
+  cursor:pointer;
+  padding:0;
+}
+
+.stepper button:hover:not(:disabled){
+  background:var(--accent);
+  color:var(--accent-ink);
+}
+
+.stepper button:disabled{
+  opacity:.35;
+  cursor:not-allowed;
+}
+
+.stepper .qv{
+  min-width:26px;
+  text-align:center;
+  font-family:var(--mono);
+  font-size:12px;
+  font-weight:700;
+}
+
+.totals{
+  margin-top:10px;
+  border-top:1px solid var(--line);
+  padding-top:9px;
+  font-family:var(--mono);
+  font-size:12px;
+}
+
+.totals .row{
+  display:flex;
+  justify-content:space-between;
+  padding:2px 0;
+  color:var(--muted);
+}
+
+.totals .row.big{
+  color:var(--text);
+  font-size:14px;
+  font-weight:700;
+  padding-top:6px;
+}
+
+input,textarea{
+  width:100%;
+  background:var(--panel2);
+  border:1px solid var(--line);
+  color:var(--text);
+  border-radius:8px;
+  padding:8px 10px;
+  font:inherit;
+  font-size:13px;
+  margin-top:6px;
+  resize:vertical;
+}
+
+.btns{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
+
+button.act{
+  background:var(--accent);
+  color:var(--accent-ink);
+  border:0;
+  border-radius:9px;
+  padding:9px 13px;
+  font-weight:700;
+  font-size:13px;
+  cursor:pointer;
+}
+
+button.act:disabled{
+  opacity:.4;
+  cursor:not-allowed;
+}
+
+button.ghost{
+  background:var(--panel2);
+  color:var(--text);
+  border:1px solid var(--line);
+  border-radius:9px;
+  padding:9px 13px;
+  font-weight:600;
+  font-size:13px;
+  cursor:pointer;
+}
+
+button.ghost:hover{
+  border-color:var(--accent);
+}
+
+a.ghost.link{
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+}
+
+/* Printer drawer */
+
+.drawer{
+  position:fixed;
+  top:0;
+  right:0;
+  height:100%;
+  width:440px;
+  max-width:92vw;
+  z-index:50;
+  background:var(--panel);
+  border-left:1px solid var(--line);
+  padding:16px;
+  overflow:auto;
+  box-shadow:-12px 0 30px rgba(0,0,0,.45);
+}
+
+.drawer[hidden]{display:none}
+
+.drawer-h{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:6px;
+}
+
+.drawer-h h2{
+  font-size:14px;
+  margin:0;
+  flex:1;
+}
+
+.drawer-note{
+  color:var(--muted);
+  font-size:12px;
+  margin:4px 0 14px;
+}
+
+.pr{
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px 12px;
+  margin-bottom:9px;
+}
+
+.pr .pr-top{
+  display:flex;
+  align-items:center;
+  gap:9px;
+}
+
+.pr .st-name{
+  font-weight:700;
+  flex:1;
+  font-size:13.5px;
+}
+
+.pr .st-status{
+  font-size:10.5px;
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  color:var(--muted);
+  white-space:nowrap;
+}
+
+.pr .st-status.paired{
+  color:var(--ok);
+  border-color:var(--ok);
+}
+
+.pr .st-status.simulated{
+  color:var(--warn);
+  border-color:var(--warn);
+}
+
+.pr .st-status.saved{
+  color:var(--accent);
+  border-color:var(--accent);
+}
+
+.pr .pr-info{
+  margin-top:7px;
+  padding-top:7px;
+  border-top:1px dashed var(--line);
+  color:var(--muted);
+  font:10.5px var(--mono);
+}
+
+.pr .pr-acts{
+  display:flex;
+  gap:6px;
+  margin-top:9px;
+  flex-wrap:wrap;
+}
+
+.pr .pr-acts button{
+  font-size:11.5px;
+  padding:6px 10px;
+  border-radius:7px;
+  border:1px solid var(--line);
+  background:var(--panel);
+  color:var(--text);
+  cursor:pointer;
+  font-weight:600;
+}
+
+.pr .pr-acts button:hover{
+  border-color:var(--accent);
+}
+
+.pr .pr-acts button.primary{
+  background:var(--accent);
+  color:var(--accent-ink);
+  border-color:var(--accent);
+}
+
+.pr .pr-acts button.danger{
+  color:var(--err);
+}
+
+.drawer-help{
+  margin-top:8px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.drawer-help summary{
+  cursor:pointer;
+  color:var(--text);
+  font-weight:600;
+}
+
+.drawer-help p{
+  margin:7px 0 0;
+}
+
+.empty{
+  color:var(--muted);
+  font-size:12px;
+  text-align:center;
+  padding:16px 6px;
+}
+
+.ticket{
+  background:#fff;
+  color:var(--base);
+  border-radius:8px;
+  padding:12px 13px;
+  font-family:var(--mono);
+  font-size:11.5px;
+  line-height:1.5;
+  margin-bottom:11px;
+  white-space:pre-wrap;
+  box-shadow:0 2px 12px rgba(0,0,0,.35);
+}
+
+.ticket .meta{
+  display:flex;
+  justify-content:space-between;
+  margin-top:8px;
+  padding-top:7px;
+  border-top:1px dashed var(--line);
+  color:var(--muted);
+  font-size:10.5px;
+}
+
+.ticket .acts{
+  display:flex;
+  gap:6px;
+  margin-top:8px;
+}
+
+.ticket .acts button{
+  font-size:11px;
+  padding:5px 8px;
+  border-radius:6px;
+  border:1px solid var(--line);
+  background:var(--panel2);
+  color:var(--base);
+  cursor:pointer;
+  font-family:inherit;
+}
+
+.ticket .acts button.p{
+  background:var(--base);
+  color:var(--ink);
+  border-color:var(--base);
+}
+
+.kds{
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  padding:10px;
+  margin-bottom:10px;
+}
+
+.kds .top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:7px;
+}
+
+.kds .no{
+  font-family:var(--mono);
+  font-weight:700;
+  color:var(--accent);
+}
+
+.kds .st{
+  font-size:10px;
+  padding:2px 7px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  color:var(--muted);
+}
+
+.kds .row{
+  display:flex;
+  gap:8px;
+  font-size:12.5px;
+  padding:3px 0;
+  align-items:baseline;
+}
+
+.kds .row.done .nm{
+  text-decoration:line-through;
+  color:var(--muted);
+}
+
+.kds .row .q{
+  font-family:var(--mono);
+  color:var(--muted);
+  min-width:22px;
+}
+
+.kds .row .stn{
+  font-size:10px;
+  color:var(--muted);
+  border:1px solid var(--line);
+  padding:0 5px;
+  border-radius:4px;
+}
+
+.kds .row .dn{
+  margin-left:auto;
+  background:none;
+  border:1px solid var(--line);
+  color:var(--ok);
+  border-radius:5px;
+  font-size:10px;
+  padding:1px 6px;
+  cursor:pointer;
+}
+
+.note{
+  color:var(--warn);
+  font-size:11px;
+}
+
+.opts{
+  padding:2px 0 8px;
+  border-bottom:1px dashed var(--line);
+}
+
+.opt-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:3px 0;
+  flex-wrap:wrap;
+}
+
+.opt-label{
+  font-size:10.5px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.6px;
+  min-width:66px;
+}
+
+.opt-chips{
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+}
+
+.chip{
+  background:var(--panel);
+  border:1px solid var(--line);
+  color:var(--muted);
+  border-radius:999px;
+  padding:3px 9px;
+  font-size:11px;
+  cursor:pointer;
+  font-weight:600;
+}
+
+.chip:hover{
+  border-color:var(--accent);
+  color:var(--text);
+}
+
+.chip.on{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:var(--accent-ink);
+}
+
+.kds .opt{
+  color:var(--accent);
+  font-size:11px;
+}
+
+.tblerow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:11px;
+}
+
+.tblerow .tbl{
+  font-size:12px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.7px;
+  white-space:nowrap;
+}
+
+.tblerow .req{
+  color:var(--accent);
+}
+
+.tblerow input{
+  margin-top:0;
+  max-width:120px;
+  font-family:var(--mono);
+  font-weight:700;
+  font-size:15px;
+  text-align:center;
+}
+
+.tblerow input.bad{
+  border-color:var(--err);
+}
+
+.kds .tbl-tag{
+  font-family:var(--mono);
+  color:var(--ok);
+  font-size:11px;
+  border:1px solid var(--line);
+  padding:1px 6px;
+  border-radius:5px;
+}
+
+.debug{
+  background:#101f24;
+  border:1px solid var(--line);
+  border-radius:8px;
+  margin-top:12px;
+  padding:9px;
+}
+
+.debug-title{
+  font-size:11px;
+  color:var(--muted);
+  margin-bottom:6px;
+  text-transform:uppercase;
+  letter-spacing:.6px;
+}
+
+#debugLog{
+  max-height:150px;
+  overflow:auto;
+  font:10px/1.5 var(--mono);
+  white-space:pre-wrap;
+}
+
+.log-ok{color:var(--ok)}
+.log-warn{color:var(--warn)}
+.log-err{color:var(--err)}
+
+@media print{
+  body *{visibility:hidden}
+  #printArea,#printArea *{visibility:visible}
+  #printArea{
+    position:absolute;
+    left:0;
+    top:0;
+    width:58mm;
+  }
+}
+</style>
+
+</head>
+
+<body>
+
+<header>
+  <h1>Restaurant Order-to-Kitchen</h1>
+
+  <span class="badge" id="btBadge">
+    printers: none paired
+  </span>
+
+  <span class="badge" id="apiBadge">
+    order service: up
+  </span>
+
+<span class="spacer"></span>
+
+<a class="ghost link"
+  href="log.html"
+  target="_blank"
+  rel="noopener">
+Event Log </a>
+
+  <button class="ghost" id="btnPrinters">
+    Printers
+  </button>
+</header>
+
+<!-- PRINTER DRAWER -->
+
+<div class="drawer" id="printerDrawer" hidden>
+
+  <div class="drawer-h">
+    <h2>Printers by Station</h2>
+    <button class="ghost" id="btnClosePrinters">
+      Close
+    </button>
+  </div>
+
+  <p class="drawer-note">
+    Pair one Bluetooth LE thermal printer with each kitchen station.
+    The browser will only inspect the BLE services explicitly allowed by this page.
+  </p>
+
+  <div id="printerList"></div>
+
+  <details class="drawer-help">
+    <summary>Bluetooth troubleshooting</summary>
+
+```
+<p>
+  Use Chrome or Edge. The page must run from localhost or HTTPS.
+  If the printer connects but no writable characteristic is found,
+  the printer may use Bluetooth Classic/SPP instead of BLE, or may
+  use a different BLE service UUID.
+</p>
+```
+
+  </details>
+
+  <div class="debug">
+    <div class="debug-title">Bluetooth Debug Log</div>
+    <div id="debugLog"></div>
+  </div>
+
+</div>
+
+<main>
+
+  <!-- CUSTOMER -->
+
+  <section>
+
+```
+<h2>Customer App</h2>
+
+<div class="body">
+
+  <div class="tblerow">
+    <label class="tbl">
+      Table no. <b class="req">*</b>
+    </label>
+
+    <input
+      id="cTable"
+      inputmode="numeric"
+      maxlength="6"
+      placeholder="e.g. 12"
+    >
+  </div>
+
+  <div class="grid" id="menu"></div>
+
+  <div
+    class="cart"
+    id="cart"
+    style="margin-top:12px">
+  </div>
+
+  <div class="totals" id="totals"></div>
+
+  <input
+    id="cName"
+    placeholder="Customer name (optional)"
+  >
+
+  <textarea
+    id="cNote"
+    rows="2"
+    placeholder="Order note (e.g. no cutlery)">
+  </textarea>
+
+  <div class="btns">
+
+    <button
+      class="act"
+      id="btnOrder"
+      disabled>
+      Place Order
+    </button>
+
+    <button
+      class="ghost"
+      id="btnClear">
+      Clear
+    </button>
+
+  </div>
+
+</div>
+```
+
+  </section>
+
+  <!-- TICKETS -->
+
+  <section>
+
+```
+<h2>Kitchen Tickets (ESC/POS)</h2>
+
+<div
+  class="body"
+  id="tickets">
+
+  <div class="empty">
+    No tickets yet. Place an order.
+  </div>
+
+</div>
+```
+
+  </section>
+
+  <!-- KDS -->
+
+  <section>
+
+```
+<h2>Kitchen Display (KDS)</h2>
+
+<div
+  class="body"
+  id="kds">
+
+  <div class="empty">
+    Kitchen is idle.
+  </div>
+
+</div>
+```
+
+  </section>
+
+</main>
+
+<div
+  id="printArea"
+  style="display:none">
+</div>
+
+<script>
+
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const TAX_RATE = 0.10;
+
+const PAPER_COLS = 32;
+
+
+/*
+ * BLE services commonly found on thermal printers.
+ *
+ * IMPORTANT:
+ * Web Bluetooth can only access services listed here
+ * when requestDevice() uses optionalServices.
+ */
+
+const BT_SERVICE_UUIDS = [
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '000018f0-0000-1000-8000-00805f9b34fb',
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000fff0-0000-1000-8000-00805f9b34fb'
+];
+
+
+/*
+ * Common write characteristic.
+ *
+ * We do NOT depend exclusively on this.
+ * The code searches the characteristics of each
+ * permitted service and selects a writable one.
+ */
+
+const PRINTER_CHAR_UUID =
+  '0000ff02-0000-1000-8000-00805f9b34fb';
+
+
+/* =========================================================
+   MENU
+========================================================= */
+
+const MENU = [
+
+  {id:'mi_001',name:'Roti Canai',price:2.50,station:'Griddle'},
+  {id:'mi_002',name:'Roti Telur',price:4.00,station:'Griddle'},
+  {id:'mi_003',name:'Nasi Lemak',price:5.50,station:'Kitchen'},
+  {id:'mi_004',name:'Nasi Lemak Ayam',price:8.50,station:'Kitchen'},
+  {id:'mi_005',name:'Mee Goreng',price:7.00,station:'Wok'},
+  {id:'mi_006',name:'Mee Goreng Mamak',price:8.50,station:'Wok'},
+  {id:'mi_007',name:'Char Kway Teow',price:8.00,station:'Wok'},
+  {id:'mi_008',name:'Nasi Goreng',price:7.50,station:'Wok'},
+  {id:'mi_009',name:'Kuey Teow Sup',price:7.50,station:'Wok'},
+  {id:'mi_010',name:'Lontong',price:6.50,station:'Kitchen'},
+  {id:'mi_011',name:'Half-Boiled Eggs',price:2.00,station:'Kitchen'},
+  {id:'mi_012',name:'Roti Bakar',price:4.50,station:'Griddle'},
+  {id:'mi_013',name:'Kaya Toast',price:4.00,station:'Griddle'},
+
+  {id:'mi_014',name:'Teh Tarik',price:3.00,station:'Beverage',options:'drink'},
+  {id:'mi_015',name:'Kopi O',price:2.80,station:'Beverage',options:'drink'},
+  {id:'mi_016',name:'Milo Ais',price:3.50,station:'Beverage',options:'drink'},
+  {id:'mi_017',name:'Teh O Limau',price:3.20,station:'Beverage',options:'drink'},
+  {id:'mi_018',name:'Air Sirap',price:3.00,station:'Beverage',options:'drink'}
+
+];
+
+
+const DRINK_OPTIONS = {
+
+  sweetness:{
+    label:'Sweetness',
+    choices:[
+      'Normal',
+      'Less Sweet',
+      'No Sugar',
+      'Extra Sweet'
+    ]
+  },
+
+  ice:{
+    label:'Ice',
+    choices:[
+      'Normal',
+      'Less Ice',
+      'No Ice',
+      'Extra Ice'
+    ]
+  }
+
+};
+
+
+/* =========================================================
+   ESC/POS
+========================================================= */
+
+const ESC = {
+
+  INIT:[0x1B,0x40],
+
+  ALIGN_L:[0x1B,0x61,0x00],
+
+  ALIGN_C:[0x1B,0x61,0x01],
+
+  BOLD_ON:[0x1B,0x45,0x01],
+
+  BOLD_OFF:[0x1B,0x45,0x00],
+
+  BIG:[0x1B,0x21,0x30],
+
+  NORMAL:[0x1B,0x21,0x00],
+
+  FEED:[0x0A],
+
+  CUT:[0x1D,0x56,0x42,0x00]
+
+};
+
+
+function escapePos(str){
+
+  const map = {
+    '–':'-',
+    '—':'-',
+    '’':"'",
+    '“':'"',
+    '”':'"',
+    '×':'x',
+    '•':'*'
+  };
+
+  return String(str)
+    .split('')
+    .map(c => map[c] ?? c)
+    .join('');
+}
+
+
+function esc(str){
+
+  return Array
+    .from(escapePos(str))
+    .map(ch => ch.charCodeAt(0) & 0xFF);
+
+}
+
+
+function line(){
+
+  return '-'.repeat(PAPER_COLS) + '\n';
+
+}
+
+
+function center(s,cols=PAPER_COLS){
+
+  s = String(s);
+
+  if(s.length >= cols) return s;
+
+  const left =
+    Math.floor((cols - s.length) / 2);
+
+  return ' '.repeat(left) + s;
+
+}
+
+
+/* =========================================================
+   DRINK OPTIONS
+========================================================= */
+
+function optionLines(item){
+
+  const out = [];
+
+  const o = item.options || {};
+
+  if(
+    o.sweetness &&
+    o.sweetness !== 'Normal'
+  ){
+    out.push(o.sweetness);
+  }
+
+  if(
+    o.ice &&
+    o.ice !== 'Normal'
+  ){
+    out.push(o.ice);
+  }
+
+  return out;
+
+}
+
+
+function optionSummary(item){
+
+  return optionLines(item).join(' / ');
+
+}
+
+
+/* =========================================================
+   TICKET TEXT
+========================================================= */
+
+function renderTicket(order){
+
+  let t = '';
+
+  t += center('CENTRAL KITCHEN') + '\n';
+
+  t += center(
+    order.station.toUpperCase() + ' TICKET'
+  ) + '\n';
+
+  t += line();
+
+  t += `Order #${order.orderNo}\n`;
+
+  t += `Table : ${order.tableNo}\n`;
+
+  t += `Time  : ${
+    new Date(order.createdAt).toLocaleString()
+  }\n`;
+
+  if(order.customerName){
+    t += `Guest : ${order.customerName}\n`;
+  }
+
+  t += line();
+
+  for(const it of order.items){
+
+    t += `${it.qty} x ${it.name}\n`;
+
+    for(const l of optionLines(it)){
+      t += `      * ${l}\n`;
+    }
+
+    if(it.note){
+      t += `      > ${it.note}\n`;
+    }
+
+  }
+
+  t += line();
+
+  if(order.note){
+
+    t += `NOTE: ${order.note}\n`;
+
+    t += line();
+
+  }
+
+  t += center(
+    '*** PREPARE IMMEDIATELY ***'
+  ) + '\n';
+
+  return t;
+
+}
+
+
+/* =========================================================
+   ESC/POS BYTE BUILDER
+========================================================= */
+
+function buildEscPos(order){
+
+  let bytes = [];
+
+  const add = (...seqs) => {
+
+    seqs.forEach(
+      s => bytes.push(...s)
+    );
+
+  };
+
+  const txt = s => {
+
+    bytes.push(...esc(s));
+
+  };
+
+
+  add(
+    ESC.INIT,
+    ESC.ALIGN_C
+  );
+
+  add(ESC.BOLD_ON);
+
+  txt('CENTRAL KITCHEN');
+
+  add(ESC.FEED);
+
+  txt(
+    order.station.toUpperCase() +
+    ' TICKET'
+  );
+
+  add(
+    ESC.BOLD_OFF,
+    ESC.FEED
+  );
+
+
+  add(
+    ESC.ALIGN_C,
+    ESC.BIG
+  );
+
+  txt('TABLE ' + order.tableNo);
+
+  add(
+    ESC.NORMAL,
+    ESC.FEED
+  );
+
+
+  txt(
+    'Order #' + order.orderNo
+  );
+
+  add(ESC.FEED);
+
+  txt(
+    new Date(order.createdAt)
+      .toLocaleString()
+  );
+
+  add(ESC.FEED);
+
+
+  if(order.customerName){
+
+    txt(
+      'Guest: ' +
+      order.customerName
+    );
+
+    add(ESC.FEED);
+
+  }
+
+
+  add(ESC.ALIGN_L);
+
+  txt(line());
+
+
+  for(const it of order.items){
+
+    add(ESC.BOLD_ON);
+
+    txt(`${it.qty} x ${it.name}`);
+
+    add(
+      ESC.FEED,
+      ESC.BOLD_OFF
+    );
+
+
+    for(const l of optionLines(it)){
+
+      txt('     * ' + l);
+
+      add(ESC.FEED);
+
+    }
+
+
+    if(it.note){
+
+      txt('     > ' + it.note);
+
+      add(ESC.FEED);
+
+    }
+
+  }
+
+
+  txt(line());
+
+
+  if(order.note){
+
+    add(ESC.BOLD_ON);
+
+    txt('NOTE: ' + order.note);
+
+    add(
+      ESC.FEED,
+      ESC.BOLD_OFF
+    );
+
+    txt(line());
+
+  }
+
+
+  add(
+    ESC.ALIGN_C,
+    ESC.BOLD_ON
+  );
+
+  txt('PREPARE IMMEDIATELY');
+
+  add(
+    ESC.BOLD_OFF,
+    ESC.FEED,
+    ESC.FEED,
+    ESC.FEED
+  );
+
+  add(ESC.CUT);
+
+
+  return new Uint8Array(bytes);
+
+}
+
+
+/* =========================================================
+   TEST TICKET
+========================================================= */
+
+function testTicket(station){
+
+  return {
+
+    orderNo:'TEST',
+
+    tableNo:'TEST',
+
+    station,
+
+    customerName:'',
+
+    note:'',
+
+    createdAt:Date.now(),
+
+    items:[
+
+      {
+        qty:1,
+        name:'Paper & alignment OK',
+        note:'Bluetooth ESC/POS test'
+      }
+
+    ]
+
+  };
+
+}
+
+
+/* =========================================================
+   EVENT LOG
+========================================================= */
+
+const LOG_KEY = 'rkitchen.eventlog';
+
+const LOG_MAX = 500;
+
+
+function log(msg,kind=''){
+
+  const entry = {
+    ts:Date.now(),
+    msg,
+    kind
+  };
+
+
+  try{
+
+    const all =
+      JSON.parse(
+        localStorage.getItem(LOG_KEY) || '[]'
+      );
+
+    all.push(entry);
+
+    localStorage.setItem(
+      LOG_KEY,
+      JSON.stringify(
+        all.slice(-LOG_MAX)
+      )
+    );
+
+  }catch(e){}
+
+
+  console.log(
+    `[${kind || 'info'}]`,
+    msg
+  );
+
+
+  const debug =
+    document.getElementById('debugLog');
+
+  if(debug){
+
+    const row =
+      document.createElement('div');
+
+    row.className =
+      'log-' + (
+        kind === 'ok'
+          ? 'ok'
+          : kind === 'warn'
+            ? 'warn'
+            : kind === 'err'
+              ? 'err'
+              : ''
+      );
+
+    row.textContent =
+      new Date(entry.ts)
+        .toLocaleTimeString() +
+      '  ' +
+      msg;
+
+    debug.appendChild(row);
+
+    debug.scrollTop =
+      debug.scrollHeight;
+
+  }
+
+}
+
+
+/* =========================================================
+   ORDER SERVICE
+========================================================= */
+
+const OrderService = (() => {
+
+  const store = [];
+
+  let counter = 100;
+
+  const seenKeys = new Set();
+
+
+  function placeOrder({
+    tableNo,
+    customerName,
+    note,
+    cart,
+    idempotencyKey
+  }){
+
+    if(
+      !idempotencyKey ||
+      typeof idempotencyKey !== 'string'
+    ){
+      throw new Error(
+        'idempotencyKey is required'
+      );
+    }
+
+
+    const table =
+      String(tableNo ?? '').trim();
+
+
+    if(!table){
+
+      throw new Error(
+        'table number is required'
+      );
+
+    }
+
+
+    if(
+      !/^[A-Za-z0-9-]{1,6}$/
+        .test(table)
+    ){
+
+      throw new Error(
+        'invalid table number'
+      );
+
+    }
+
+
+    if(
+      !Array.isArray(cart) ||
+      !cart.length
+    ){
+
+      throw new Error(
+        'cart is empty'
+      );
+
+    }
+
+
+    if(seenKeys.has(idempotencyKey)){
+
+      const duplicate =
+        store.find(
+          o =>
+            o.idempotencyKey ===
+            idempotencyKey
+        );
+
+      if(duplicate){
+
+        log(
+          'duplicate request ignored',
+          'warn'
+        );
+
+        return duplicate;
+
+      }
+
+    }
+
+
+    const items =
+      cart.map(c => {
+
+        const m =
+          MENU.find(
+            x => x.id === c.id
+          );
+
+
+        if(!m){
+
+          throw new Error(
+            'Unknown menu item ' +
+            c.id
+          );
+
+        }
+
+
+        return {
+
+          id:m.id,
+
+          name:m.name,
+
+          qty:c.qty,
+
+          price:m.price,
+
+          station:m.station,
+
+          note:c.note || '',
+
+          options:
+            c.options
+              ? {...c.options}
+              : null,
+
+          status:'queued'
+
+        };
+
+      });
+
+
+    const subtotal =
+      items.reduce(
+        (s,i) =>
+          s + i.price * i.qty,
+        0
+      );
+
+
+    const tax =
+      +(subtotal * TAX_RATE)
+        .toFixed(2);
+
+
+    const order = {
+
+      id:
+        'ord_' +
+        Math.random()
+          .toString(36)
+          .slice(2,10),
+
+      idempotencyKey,
+
+      orderNo:++counter,
+
+      channel:'app',
+
+      tableNo:
+        table.toUpperCase(),
+
+      customerName:
+        customerName || '',
+
+      note:
+        note || '',
+
+      items,
+
+      subtotal:
+        +subtotal.toFixed(2),
+
+      tax,
+
+      total:
+        +(subtotal + tax)
+          .toFixed(2),
+
+      status:'accepted',
+
+      createdAt:Date.now()
+
+    };
+
+
+    store.push(order);
+
+    seenKeys.add(idempotencyKey);
+
+
+    log(
+      `order #${order.orderNo} created`,
+      'ok'
+    );
+
+
+    return order;
+
+  }
+
+
+  function routeTickets(order){
+
+    const byStation = {};
+
+    for(const it of order.items){
+
+      (
+        byStation[it.station] ||= []
+      ).push(it);
+
+    }
+
+
+    return Object
+      .entries(byStation)
+      .map(
+        ([station,items]) => ({
+          ...order,
+          station,
+          items
+        })
+      );
+
+  }
+
+
+  return {
+    placeOrder,
+    routeTickets
+  };
+
+})();
+
+
+/* =========================================================
+   BLUETOOTH PRINTER
+========================================================= */
+
+const PRINTER_STORE =
+  'rkitchen.printers';
+
+
+const Printer = (() => {
+
+  /*
+   * Active GATT connections.
+   *
+   * conn[station] = {
+   *   device,
+   *   server,
+   *   characteristic,
+   *   simulated
+   * }
+   */
+
+  const conn = {};
+
+
+  function loadBindings(){
+
+    try{
+
+      return JSON.parse(
+        localStorage.getItem(
+          PRINTER_STORE
+        ) || '{}'
+      ) || {};
+
+    }catch(e){
+
+      return {};
+
+    }
+
+  }
+
+
+  function saveBindings(all){
+
+    try{
+
+      localStorage.setItem(
+        PRINTER_STORE,
+        JSON.stringify(all)
+      );
+
+    }catch(e){}
+
+  }
+
+
+  function rememberBinding(
+    station,
+    name,
+    simulated,
+    serviceUUID='',
+    characteristicUUID=''
+  ){
+
+    const all =
+      loadBindings();
+
+
+    all[station] = {
+
+      name:
+        name || '',
+
+      simulated:
+        !!simulated,
+
+      serviceUUID,
+
+      characteristicUUID
+
+    };
+
+
+    saveBindings(all);
+
+  }
+
+
+  function forgetBinding(station){
+
+    const all =
+      loadBindings();
+
+    delete all[station];
+
+    saveBindings(all);
+
+  }
+
+
+  /*
+   * IMPORTANT FIX:
+   *
+   * We do NOT call:
+   *
+   * server.getPrimaryServices()
+   *
+   * because that can throw:
+   *
+   * "Failed to execute 'getPrimaryServices'
+   *  on 'BluetoothRemoteGATTServer'"
+   *
+   * Instead we only query services declared in
+   * optionalServices.
+   */
+
+  async function findWriteCharacteristic(server){
+
+    for(
+      const uuid of BT_SERVICE_UUIDS
+    ){
+
+      try{
+
+        log(
+          `checking BLE service ${uuid}`
+        );
+
+
+        const service =
+          await server.getPrimaryService(
+            uuid
+          );
+
+
+        const characteristics =
+          await service.getCharacteristics();
+
+
+        log(
+          `${characteristics.length} characteristic(s) found`
+        );
+
+
+        /*
+         * First preference:
+         * known FF02 write characteristic.
+         */
+
+        const preferred =
+          characteristics.find(
+            c =>
+              c.uuid.toLowerCase() ===
+              PRINTER_CHAR_UUID
+          );
+
+
+        if(
+          preferred &&
+          (
+            preferred.properties.write ||
+            preferred.properties.writeWithoutResponse
+          )
+        ){
+
+          log(
+            `writable characteristic found: ${preferred.uuid}`,
+            'ok'
+          );
+
+
+          return {
+
+            characteristic:preferred,
+
+            serviceUUID:
+              service.uuid
+
+          };
+
+        }
+
+
+        /*
+         * Otherwise automatically find
+         * any writable characteristic.
+         */
+
+        const writable =
+          characteristics.find(
+            c =>
+              c.properties.write ||
+              c.properties.writeWithoutResponse
+          );
+
+
+        if(writable){
+
+          log(
+            `writable characteristic found: ${writable.uuid}`,
+            'ok'
+          );
+
+
+          return {
+
+            characteristic:writable,
+
+            serviceUUID:
+              service.uuid
+
+          };
+
+        }
+
+      }catch(e){
+
+        log(
+          `service ${uuid} unavailable: ${e.message}`,
+          'warn'
+        );
+
+      }
+
+    }
+
+
+    return null;
+
+  }
+
+
+  /*
+   * Pair Bluetooth LE printer.
+   */
+
+  async function pair(station){
+
+    if(!navigator.bluetooth){
+
+      log(
+        'Web Bluetooth unavailable. Use Chrome/Edge.',
+        'err'
+      );
+
+      return false;
+
+    }
+
+
+    try{
+
+      log(
+        `selecting Bluetooth printer for ${station}...`
+      );
+
+
+      /*
+       * acceptAllDevices is useful for unknown
+       * thermal printers.
+       *
+       * optionalServices controls which GATT
+       * services the page can access.
+       */
+
+      const device =
+        await navigator.bluetooth
+          .requestDevice({
+
+            acceptAllDevices:true,
+
+            optionalServices:
+              BT_SERVICE_UUIDS
+
+          });
+
+
+      log(
+        `selected: ${device.name || 'Unknown device'}`,
+        'ok'
+      );
+
+
+      if(!device.gatt){
+
+        throw new Error(
+          'Bluetooth GATT is not available'
+        );
+
+      }
+
+
+      const server =
+        await device.gatt.connect();
+
+
+      if(!server.connected){
+
+        throw new Error(
+          'GATT server is not connected'
+        );
+
+      }
+
+
+      log(
+        'GATT connection established',
+        'ok'
+      );
+
+
+      const result =
+        await findWriteCharacteristic(
+          server
+        );
+
+
+      if(!result){
+
+        log(
+          'No writable BLE characteristic found.',
+          'err'
+        );
+
+        log(
+          'The printer may use Bluetooth Classic/SPP or a different BLE service.',
+          'err'
+        );
+
+
+        try{
+          device.gatt.disconnect();
+        }catch(e){}
+
+
+        return false;
+
+      }
+
+
+      conn[station] = {
+
+        device,
+
+        server,
+
+        characteristic:
+          result.characteristic,
+
+        simulated:false
+
+      };
+
+
+      device.addEventListener(
+        'gattserverdisconnected',
+        () => {
+
+          if(
+            conn[station] &&
+            conn[station].device === device
+          ){
+
+            conn[station]
+              .characteristic = null;
+
+            log(
+              `${station} printer disconnected`,
+              'err'
+            );
+
+            refreshUI();
+
+          }
+
+        }
+      );
+
+
+      rememberBinding(
+
+        station,
+
+        device.name ||
+          'Bluetooth printer',
+
+        false,
+
+        result.serviceUUID,
+
+        result.characteristic.uuid
+
+      );
+
+
+      log(
+        `${station} printer ready: ${device.name || 'printer'}`,
+        'ok'
+      );
+
+
+      refreshUI();
+
+      return true;
+
+    }catch(e){
+
+      log(
+        `pairing failed for ${station}: ${e.message}`,
+        'err'
+      );
+
+
+      return false;
+
+    }
+
+  }
+
+
+  /*
+   * Simulated printer.
+   */
+
+  function useSimulated(station){
+
+    conn[station] = {
+
+      device:null,
+
+      server:null,
+
+      characteristic:null,
+
+      simulated:true
+
+    };
+
+
+    rememberBinding(
+      station,
+      'simulated',
+      true
+    );
+
+
+    log(
+      `${station} printer set to simulated`,
+      'warn'
+    );
+
+
+    refreshUI();
+
+  }
+
+
+  /*
+   * Remove printer binding.
+   */
+
+  function unbind(station){
+
+    const c =
+      conn[station];
+
+
+    if(
+      c &&
+      c.device &&
+      c.device.gatt
+    ){
+
+      try{
+        c.device.gatt.disconnect();
+      }catch(e){}
+
+    }
+
+
+    delete conn[station];
+
+    forgetBinding(station);
+
+
+    log(
+      `${station} printer unbound`,
+      'warn'
+    );
+
+
+    refreshUI();
+
+  }
+
+
+  /*
+   * Send ESC/POS bytes.
+   */
+
+  async function send(
+    bytes,
+    station
+  ){
+
+    const c =
+      conn[station];
+
+
+    if(
+      !c ||
+      c.simulated ||
+      !c.characteristic
+    ){
+
+      log(
+        `[${station}] simulated print: ${bytes.length} bytes`,
+        'warn'
+      );
+
+
+      return {
+        mode:'simulated',
+        station
+      };
+
+    }
+
+
+    if(
+      c.device &&
+      c.device.gatt &&
+      !c.device.gatt.connected
+    ){
+
+      log(
+        `[${station}] printer disconnected`,
+        'err'
+      );
+
+
+      c.characteristic = null;
+
+      refreshUI();
+
+
+      throw new Error(
+        'printer is disconnected'
+      );
+
+    }
+
+
+    /*
+     * BLE packet size.
+     */
+
+    const CHUNK = 128;
+
+
+    log(
+      `[${station}] sending ${bytes.length} bytes...`
+    );
+
+
+    for(
+      let i=0;
+      i<bytes.length;
+      i+=CHUNK
+    ){
+
+      const slice =
+        bytes.slice(
+          i,
+          i + CHUNK
+        );
+
+
+      if(
+        c.characteristic
+          .properties
+          .writeWithoutResponse
+      ){
+
+        await c.characteristic
+          .writeValueWithoutResponse(
+            slice
+          );
+
+      }else{
+
+        await c.characteristic
+          .writeValue(
+            slice
+          );
+
+      }
+
+    }
+
+
+    log(
+      `[${station}] print sent successfully`,
+      'ok'
+    );
+
+
+    return {
+      mode:'bluetooth',
+      station
+    };
+
+  }
+
+
+  /*
+   * Current printer status.
+   */
+
+  function status(station){
+
+    const c =
+      conn[station];
+
+
+    if(
+      c &&
+      c.simulated
+    ){
+
+      return {
+        state:'simulated',
+        label:'simulated'
+      };
+
+    }
+
+
+    if(
+      c &&
+      c.characteristic
+    ){
+
+      return {
+
+        state:'paired',
+
+        label:
+          (
+            c.device &&
+            c.device.name
+          ) ||
+          'paired',
+
+        service:
+          c.characteristic
+            ? c.characteristic.service?.uuid || ''
+            : '',
+
+        characteristic:
+          c.characteristic
+            ? c.characteristic.uuid
+            : ''
+
+      };
+
+    }
+
+
+    const saved =
+      loadBindings()[station];
+
+
+    if(
+      saved &&
+      saved.simulated
+    ){
+
+      return {
+
+        state:'saved-sim',
+
+        label:
+          'simulated'
+
+      };
+
+    }
+
+
+    if(saved){
+
+      return {
+
+        state:'saved',
+
+        label:
+          (
+            saved.name ||
+            'paired'
+          ) +
+          ' (tap to reconnect)',
+
+        service:
+          saved.serviceUUID || '',
+
+        characteristic:
+          saved.characteristicUUID || ''
+
+      };
+
+    }
+
+
+    return {
+
+      state:'none',
+
+      label:'not paired'
+
+    };
+
+  }
+
+
+  return {
+
+    pair,
+
+    useSimulated,
+
+    unbind,
+
+    send,
+
+    status,
+
+    bindings:loadBindings
+
+  };
+
+})();
+
+
+/* =========================================================
+   STATIONS
+========================================================= */
+
+const STATIONS =
+  [
+    ...new Set(
+      MENU.map(
+        m => m.station
+      )
+    )
+  ];
+
+
+/* =========================================================
+   BROWSER PRINT
+========================================================= */
+
+function fallbackPrint(text){
+
+  const area =
+    document.getElementById(
+      'printArea'
+    );
+
+
+  area.textContent = '';
+
+
+  const pre =
+    document.createElement(
+      'pre'
+    );
+
+
+  pre.style.cssText =
+    'font-family:monospace;font-size:11px;margin:0';
+
+
+  pre.textContent = text;
+
+
+  area.appendChild(pre);
+
+  area.style.display =
+    'block';
+
+
+  window.print();
+
+
+  setTimeout(
+    () => {
+      area.style.display =
+        'none';
+    },
+    400
+  );
+
+}
+
+
+/* =========================================================
+   UI STATE
+========================================================= */
+
+const state = {
+
+  cart:[]
+
+};
+
+
+const KDS = {
+
+  orders:[]
+
+};
+
+
+function money(n){
+
+  return '$' +
+    Number(n).toFixed(2);
+
+}
+
+
+/* =========================================================
+   MENU
+========================================================= */
+
+function renderMenu(){
+
+  document.getElementById(
+    'menu'
+  ).innerHTML = MENU.map(
+    m => `
+
+      <div
+        class="item"
+        data-id="${m.id}">
+
+        <div class="n">
+          ${m.name}
+        </div>
+
+        <div class="m">
+          ${m.station}
+        </div>
+
+        <div class="p">
+          ${money(m.price)}
+        </div>
+
+      </div>
+
+    `
+  ).join('');
+
+}
+
+
+/* =========================================================
+   CART
+========================================================= */
+
+function renderCart(){
+
+  const c =
+    document.getElementById(
+      'cart'
+    );
+
+
+  if(!state.cart.length){
+
+    c.innerHTML =
+      '<div class="empty">Tap a menu item to add it.</div>';
+
+  }else{
+
+    c.innerHTML =
+      state.cart.map(
+        (l,i) => `
+
+          <div class="line">
+
+            <span class="nm">
+              ${l.name}
+            </span>
+
+            <span class="q">
+              ${money(l.price)}
+            </span>
+
+            <span class="stepper">
+
+              <button
+                data-dec="${i}"
+                ${l.qty <= 1 ? 'disabled' : ''}>
+                −
+              </button>
+
+              <span class="qv">
+                ${l.qty}
+              </span>
+
+              <button
+                data-inc="${i}">
+                +
+              </button>
+
+            </span>
+
+            <span class="lt">
+              ${money(l.price*l.qty)}
+            </span>
+
+            <button
+              data-rm="${i}">
+              ×
+            </button>
+
+          </div>
+
+
+          ${
+            l.options
+            ?
+            `
+
+            <div
+              class="opts">
+
+              ${
+                Object.entries(
+                  DRINK_OPTIONS
+                ).map(
+                  ([key,def]) => `
+
+                    <div class="opt-row">
+
+                      <span class="opt-label">
+                        ${def.label}
+                      </span>
+
+                      <span class="opt-chips">
+
+                        ${
+                          def.choices.map(
+                            ch => `
+
+                              <button
+                                class="chip ${
+                                  (
+                                    l.options[key] ||
+                                    'Normal'
+                                  ) === ch
+                                  ? 'on'
+                                  : ''
+                                }"
+                                data-oi="${i}"
+                                data-okey="${key}"
+                                data-oval="${ch}">
+
+                                ${ch}
+
+                              </button>
+
+                            `
+                          ).join('')
+                        }
+
+                      </span>
+
+                    </div>
+
+                  `
+                ).join('')
+              }
+
+            </div>
+
+            `
+            :
+            ''
+          }
+
+        `
+      ).join('');
+
+  }
+
+
+  const subtotal =
+    state.cart.reduce(
+      (s,l) =>
+        s + l.price*l.qty,
+      0
+    );
+
+
+  const tax =
+    subtotal*TAX_RATE;
+
+
+  document.getElementById(
+    'totals'
+  ).innerHTML =
+    state.cart.length
+    ?
+    `
+
+      <div class="row">
+        <span>Subtotal</span>
+        <span>${money(subtotal)}</span>
+      </div>
+
+      <div class="row">
+        <span>Tax (10%)</span>
+        <span>${money(tax)}</span>
+      </div>
+
+      <div class="row big">
+        <span>Total</span>
+        <span>${money(subtotal+tax)}</span>
+      </div>
+
+    `
+    :
+    '';
+
+
+  document.getElementById(
+    'btnOrder'
+  ).disabled =
+    !state.cart.length ||
+    !isTableValid();
+
+}
+
+
+/* =========================================================
+   TABLE
+========================================================= */
+
+function tableValue(){
+
+  const el =
+    document.getElementById(
+      'cTable'
+    );
+
+
+  const v =
+    el.value
+      .trim()
+      .toUpperCase();
+
+
+  el.classList.toggle(
+    'bad',
+    v !== '' &&
+    !/^[A-Z0-9-]{1,6}$/
+      .test(v)
+  );
+
+
+  return v;
+
+}
+
+
+function isTableValid(){
+
+  const v =
+    document.getElementById(
+      'cTable'
+    ).value.trim();
+
+
+  return /^[A-Za-z0-9-]{1,6}$/
+    .test(v);
+
+}
+
+
+/* =========================================================
+   ADD CART
+========================================================= */
+
+function addToCart(id){
+
+  const m =
+    MENU.find(
+      x => x.id === id
+    );
+
+
+  if(!m) return;
+
+
+  const found =
+    state.cart.find(
+      l => l.id === id
+    );
+
+
+  if(found){
+
+    found.qty++;
+
+    renderCart();
+
+    return;
+
+  }
+
+
+  const line = {
+
+    id:m.id,
+
+    name:m.name,
+
+    price:m.price,
+
+    qty:1,
+
+    note:''
+
+  };
+
+
+  if(m.options === 'drink'){
+
+    line.options = {};
+
+    for(
+      const key of Object.keys(
+        DRINK_OPTIONS
+      )
+    ){
+
+      line.options[key] =
+        'Normal';
+
+    }
+
+  }
+
+
+  state.cart.push(line);
+
+  renderCart();
+
+}
+
+
+/* =========================================================
+   TICKET CARD
+========================================================= */
+
+function renderTicketCard(
+  ticket,
+  order
+){
+
+  const el =
+    document.createElement(
+      'div'
+    );
+
+
+  el.className =
+    'ticket';
+
+
+  el.id =
+    'ticket_' +
+    order.id +
+    '_' +
+    ticket.station;
+
+
+  const text =
+    renderTicket(ticket);
+
+
+  el.textContent =
+    text;
+
+
+  el._ticket =
+    ticket;
+
+
+  const meta =
+    document.createElement(
+      'div'
+    );
+
+
+  meta.className =
+    'meta';
+
+
+  const st =
+    Printer.status(
+      ticket.station
+    );
+
+
+  meta.innerHTML = `
+
+    <span>
+      station:
+      <b>${ticket.station}</b>
+    </span>
+
+    <span>
+      printer:
+      ${st.label}
+    </span>
+
+  `;
+
+
+  el.appendChild(meta);
+
+
+  const acts =
+    document.createElement(
+      'div'
+    );
+
+
+  acts.className =
+    'acts';
+
+
+  acts.innerHTML = `
+
+    <button
+      class="p"
+      data-print="${el.id}">
+      Print
+    </button>
+
+    <button
+      data-fallback="${el.id}">
+      Browser print
+    </button>
+
+  `;
+
+
+  el.appendChild(acts);
+
+
+  return el;
+
+}
+
+
+/* =========================================================
+   KDS
+========================================================= */
+
+function renderKds(){
+
+  const box =
+    document.getElementById(
+      'kds'
+    );
+
+
+  if(!KDS.orders.length){
+
+    box.innerHTML =
+      '<div class="empty">Kitchen is idle.</div>';
+
+    return;
+
+  }
+
+
+  box.innerHTML =
+    KDS.orders.map(
+      o => `
+
+        <div class="kds">
+
+          <div class="top">
+
+            <span class="no">
+              #${o.orderNo}
+            </span>
+
+            <span class="tbl-tag">
+              TABLE ${o.tableNo}
+            </span>
+
+            <span class="st">
+              ${o.status}
+            </span>
+
+          </div>
+
+
+          ${
+            o.customerName
+            ?
+            `<div
+              class="note"
+              style="margin-bottom:5px">
+
+              guest:
+              ${o.customerName}
+
+            </div>`
+            :
+            ''
+          }
+
+
+          ${
+            o.items.map(
+              (it,i) => `
+
+                <div
+                  class="row ${
+                    it.status === 'done'
+                    ? 'done'
+                    : ''
+                  }">
+
+                  <span class="q">
+                    ${it.qty}x
+                  </span>
+
+                  <span class="nm">
+                    ${it.name}
+                  </span>
+
+                  <span class="stn">
+                    ${it.station}
+                  </span>
+
+                  ${
+                    it.status !== 'done'
+                    ?
+                    `
+                    <button
+                      class="dn"
+                      data-oid="${o.id}"
+                      data-i="${i}">
+                      done
+                    </button>
+                    `
+                    :
+                    ''
+                  }
+
+                </div>
+
+
+                ${
+                  optionSummary(it)
+                  ?
+                  `<div
+                    class="opt"
+                    style="margin-left:30px">
+                    ${optionSummary(it)}
+                  </div>`
+                  :
+                  ''
+                }
+
+
+                ${
+                  it.note
+                  ?
+                  `<div
+                    class="note"
+                    style="margin-left:30px">
+                    note: ${it.note}
+                  </div>`
+                  :
+                  ''
+                }
+
+              `
+            ).join('')
+          }
+
+        </div>
+
+      `
+    ).join('');
+
+}
+
+
+/* =========================================================
+   SUBMIT ORDER
+========================================================= */
+
+function submitOrder(){
+
+  const tableNo =
+    tableValue();
+
+
+  if(!isTableValid()){
+
+    log(
+      'table number is required',
+      'err'
+    );
+
+    return;
+
+  }
+
+
+  const customerName =
+    document.getElementById(
+      'cName'
+    ).value.trim();
+
+
+  const note =
+    document.getElementById(
+      'cNote'
+    ).value.trim();
+
+
+  const idempotencyKey =
+    'idem_' +
+    Date.now() +
+    '_' +
+    Math.random()
+      .toString(36)
+      .slice(2,7);
+
+
+  let order;
+
+
+  try{
+
+    order =
+      OrderService.placeOrder({
+
+        tableNo,
+
+        customerName,
+
+        note,
+
+        cart:
+          state.cart,
+
+        idempotencyKey
+
+      });
+
+  }catch(e){
+
+    log(
+      'order rejected: ' +
+      e.message,
+      'err'
+    );
+
+    return;
+
+  }
+
+
+  KDS.orders.unshift(
+    order
+  );
+
+
+  state.cart = [];
+
+
+  document.getElementById(
+    'cTable'
+  ).value = '';
+
+
+  document.getElementById(
+    'cName'
+  ).value = '';
+
+
+  document.getElementById(
+    'cNote'
+  ).value = '';
+
+
+  renderCart();
+
+  renderKds();
+
+
+  const ticketsBox =
+    document.getElementById(
+      'tickets'
+    );
+
+
+  if(
+    ticketsBox.querySelector(
+      '.empty'
+    )
+  ){
+
+    ticketsBox.innerHTML = '';
+
+  }
+
+
+  const tickets =
+    OrderService.routeTickets(
+      order
+    );
+
+
+  tickets.forEach(
+    ticket => {
+
+      const card =
+        renderTicketCard(
+          ticket,
+          order
+        );
+
+
+      ticketsBox.prepend(card);
+
+
+      /*
+       * Automatically send ticket
+       * to the station printer.
+       */
+
+      Printer
+        .send(
+          buildEscPos(ticket),
+          ticket.station
+        )
+        .catch(
+          e =>
+            log(
+              `[${ticket.station}] auto print failed: ${e.message}`,
+              'err'
+            )
+        );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   PRINTER UI
+========================================================= */
+
+function renderPrinters(){
+
+  const box =
+    document.getElementById(
+      'printerList'
+    );
+
+
+  box.innerHTML =
+    STATIONS.map(
+      station => {
+
+        const s =
+          Printer.status(
+            station
+          );
+
+
+        const paired =
+          s.state === 'paired';
+
+
+        const bound =
+          s.state !== 'none';
+
+
+        let info = '';
+
+
+        if(
+          s.characteristic
+        ){
+
+          info =
+            `Characteristic: ${s.characteristic}`;
+
+        }
+
+
+        return `
+
+          <div class="pr">
+
+            <div class="pr-top">
+
+              <span class="st-name">
+                ${station}
+              </span>
+
+              <span
+                class="st-status ${
+                  s.state.replace(
+                    'saved-',
+                    ''
+                  )
+                }">
+
+                ${s.label}
+
+              </span>
+
+            </div>
+
+
+            ${
+              info
+              ?
+              `
+              <div class="pr-info">
+                ${info}
+              </div>
+              `
+              :
+              ''
+            }
+
+
+            <div class="pr-acts">
+
+              <button
+                class="primary"
+                data-pair="${station}">
+
+                ${
+                  paired
+                  ? 'Re-pair'
+                  : 'Pair printer'
+                }
+
+              </button>
+
+
+              <button
+                data-test="${station}">
+
+                Test print
+
+              </button>
+
+
+              <button
+                data-sim="${station}">
+
+                Simulate
+
+              </button>
+
+
+              ${
+                bound
+                ?
+                `
+                <button
+                  class="danger"
+                  data-unbind="${station}">
+
+                  Unbind
+
+                </button>
+                `
+                :
+                ''
+              }
+
+            </div>
+
+          </div>
+
+        `;
+
+      }
+    ).join('');
+
+}
+
+
+function updatePrinterBadge(){
+
+  const total =
+    STATIONS.length;
+
+
+  const ready =
+    STATIONS.filter(
+      s => {
+
+        const st =
+          Printer.status(
+            s
+          ).state;
+
+
+        return (
+          st === 'paired' ||
+          st === 'simulated'
+        );
+
+      }
+    ).length;
+
+
+  const b =
+    document.getElementById(
+      'btBadge'
+    );
+
+
+  if(ready === total){
+
+    b.textContent =
+      `printers: ${ready}/${total} ready`;
+
+    b.className =
+      'badge on';
+
+  }else if(ready){
+
+    b.textContent =
+      `printers: ${ready}/${total} ready`;
+
+    b.className =
+      'badge warn';
+
+  }else{
+
+    b.textContent =
+      `printers: none paired (${total} stations)`;
+
+    b.className =
+      'badge';
+
+  }
+
+}
+
+
+function refreshUI(){
+
+  updatePrinterBadge();
+
+  renderPrinters();
+
+}
+
+
+function openPrinters(){
+
+  document.getElementById(
+    'printerDrawer'
+  ).hidden = false;
+
+  renderPrinters();
+
+}
+
+
+function closePrinters(){
+
+  document.getElementById(
+    'printerDrawer'
+  ).hidden = true;
+
+}
+
+
+/* =========================================================
+   EVENT HANDLERS
+========================================================= */
+
+
+/* Menu */
+
+document.getElementById(
+  'menu'
+).addEventListener(
+  'click',
+  e => {
+
+    const item =
+      e.target.closest(
+        '.item'
+      );
+
+
+    if(item){
+
+      addToCart(
+        item.dataset.id
+      );
+
+    }
+
+  }
+);
+
+
+/* Cart */
+
+document.getElementById(
+  'cart'
+).addEventListener(
+  'click',
+  e => {
+
+    const chip =
+      e.target.closest(
+        'button.chip'
+      );
+
+
+    if(chip){
+
+      const line =
+        state.cart[
+          +chip.dataset.oi
+        ];
+
+
+      if(
+        line &&
+        line.options
+      ){
+
+        line.options[
+          chip.dataset.okey
+        ] =
+          chip.dataset.oval;
+
+
+        renderCart();
+
+      }
+
+
+      return;
+
+    }
+
+
+    const inc =
+      e.target.closest(
+        'button[data-inc]'
+      );
+
+
+    if(inc){
+
+      const line =
+        state.cart[
+          +inc.dataset.inc
+        ];
+
+
+      if(line){
+
+        line.qty++;
+
+        renderCart();
+
+      }
+
+
+      return;
+
+    }
+
+
+    const dec =
+      e.target.closest(
+        'button[data-dec]'
+      );
+
+
+    if(dec){
+
+      const line =
+        state.cart[
+          +dec.dataset.dec
+        ];
+
+
+      if(
+        line &&
+        line.qty > 1
+      ){
+
+        line.qty--;
+
+        renderCart();
+
+      }
+
+
+      return;
+
+    }
+
+
+    const rm =
+      e.target.closest(
+        'button[data-rm]'
+      );
+
+
+    if(rm){
+
+      state.cart.splice(
+        +rm.dataset.rm,
+        1
+      );
+
+      renderCart();
+
+    }
+
+  }
+);
+
+
+/* Clear */
+
+document.getElementById(
+  'btnClear'
+).onclick = () => {
+
+  state.cart = [];
+
+  renderCart();
+
+};
+
+
+/* Order */
+
+document.getElementById(
+  'btnOrder'
+).onclick =
+  submitOrder;
+
+
+/* Table */
+
+document.getElementById(
+  'cTable'
+).addEventListener(
+  'input',
+  () => {
+
+    tableValue();
+
+    renderCart();
+
+  }
+);
+
+
+/* Printer drawer */
+
+document.getElementById(
+  'btnPrinters'
+).onclick =
+  openPrinters;
+
+
+document.getElementById(
+  'btnClosePrinters'
+).onclick =
+  closePrinters;
+
+
+/* Printer actions */
+
+document.getElementById(
+  'printerList'
+).addEventListener(
+  'click',
+  async e => {
+
+    const pairBtn =
+      e.target.closest(
+        'button[data-pair]'
+      );
+
+
+    if(pairBtn){
+
+      await Printer.pair(
+        pairBtn.dataset.pair
+      );
+
+      return;
+
+    }
+
+
+    const testBtn =
+      e.target.closest(
+        'button[data-test]'
+      );
+
+
+    if(testBtn){
+
+      const station =
+        testBtn.dataset.test;
+
+
+      try{
+
+        await Printer.send(
+          buildEscPos(
+            testTicket(station)
+          ),
+          station
+        );
+
+
+        log(
+          `${station} test print sent`,
+          'ok'
+        );
+
+      }catch(err){
+
+        log(
+          `${station} test print failed: ${err.message}`,
+          'err'
+        );
+
+      }
+
+
+      return;
+
+    }
+
+
+    const simBtn =
+      e.target.closest(
+        'button[data-sim]'
+      );
+
+
+    if(simBtn){
+
+      Printer.useSimulated(
+        simBtn.dataset.sim
+      );
+
+      return;
+
+    }
+
+
+    const unBtn =
+      e.target.closest(
+        'button[data-unbind]'
+      );
+
+
+    if(unBtn){
+
+      Printer.unbind(
+        unBtn.dataset.unbind
+      );
+
+    }
+
+  }
+);
+
+
+/* KDS */
+
+document.getElementById(
+  'kds'
+).addEventListener(
+  'click',
+  e => {
+
+    const b =
+      e.target.closest(
+        'button.dn'
+      );
+
+
+    if(!b) return;
+
+
+    const order =
+      KDS.orders.find(
+        o =>
+          o.id ===
+          b.dataset.oid
+      );
+
+
+    if(!order) return;
+
+
+    order.items[
+      +b.dataset.i
+    ].status =
+      'done';
+
+
+    if(
+      order.items.every(
+        i =>
+          i.status === 'done'
+      )
+    ){
+
+      order.status =
+        'completed';
+
+    }else{
+
+      order.status =
+        'preparing';
+
+    }
+
+
+    log(
+      `item bumped on order #${order.orderNo}`,
+      'ok'
+    );
+
+
+    renderKds();
+
+  }
+);
+
+
+/* Ticket buttons */
+
+document.getElementById(
+  'tickets'
+).addEventListener(
+  'click',
+  async e => {
+
+    const p =
+      e.target.closest(
+        'button[data-print]'
+      );
+
+
+    if(p){
+
+      const el =
+        document.getElementById(
+          p.dataset.print
+        );
+
+
+      const ticket =
+        el?._ticket;
+
+
+      if(!ticket){
+
+        log(
+          'ticket data missing',
+          'err'
+        );
+
+        return;
+
+      }
+
+
+      try{
+
+        await Printer.send(
+          buildEscPos(ticket),
+          ticket.station
+        );
+
+      }catch(err){
+
+        log(
+          'reprint failed: ' +
+          err.message,
+          'err'
+        );
+
+      }
+
+
+      return;
+
+    }
+
+
+    const f =
+      e.target.closest(
+        'button[data-fallback]'
+      );
+
+
+    if(f){
+
+      const el =
+        document.getElementById(
+          f.dataset.fallback
+        );
+
+
+      fallbackPrint(
+        el?._ticket
+          ? renderTicket(
+              el._ticket
+            )
+          : el.textContent
+      );
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   BOOT
+========================================================= */
+
+renderMenu();
+
+renderCart();
+
+refreshUI();
+
+log(
+  'Restaurant mockup ready.',
+  'ok'
+);
+
+
+if(!navigator.bluetooth){
+
+  log(
+    'Web Bluetooth is not available in this browser.',
+    'warn'
+  );
+
+}else{
+
+  log(
+    'Web Bluetooth API detected.',
+    'ok'
+  );
+
+}
+
+</script>
+
+</body>
+</html>
