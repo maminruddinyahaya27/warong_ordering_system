@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#10131A" />
+<title>Waiter Staff · Web Mockup</title>
+<style>
+  :root{
+    --primary:#2E7D32;
+    --primary-dark:#1B5E20;
+    --on-primary:#ffffff;
+    --bg:#10131A;
+    --surface:#171C26;
+    --surface-2:#1D2330;
+    --line:#2A3242;
+    --text:#E7EAF0;
+    --muted:#98A2B3;
+    --ok:#4ADE80;
+    --err:#F87171;
+    --warn:#FBBF24;
+    --radius:12px;
+    --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--text);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .app{max-width:1400px;margin:0 auto;background:var(--bg);min-height:100vh}
+  header.appbar{
+    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;
+    padding:12px 14px;background:var(--bg);color:var(--text);
+    border-bottom:1px solid var(--line);
+  }
+  header.appbar h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px}
+  header.appbar .tag{font-size:10px;font-weight:700;letter-spacing:.6px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);
+    padding:2px 7px;border-radius:999px;text-transform:uppercase;color:var(--muted)}
+  header.appbar .spacer{flex:1}
+  .iconbtn{
+    background:transparent;border:0;color:inherit;font-size:20px;line-height:1;
+    width:40px;height:40px;border-radius:999px;cursor:pointer;
+  }
+  .iconbtn:hover{background:rgba(255,255,255,.08)}
+  .status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:999px;background:#5B6472;display:inline-block}
+  .dot.ok{background:#4ADE80}
+  .dot.err{background:#F87171}
+
+  main{padding:12px}
+  .notice{background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.30);color:#FBBF24;
+    border-radius:10px;padding:9px 11px;font-size:12.5px;margin-bottom:12px}
+  .notice b{font-weight:700}
+  .notice.warn{background:rgba(248,113,113,.10);border-color:rgba(248,113,113,.30);color:#F87171}
+
+  .row{display:flex;gap:10px}
+  .row > *{flex:1;min-width:0}
+
+  .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+  .field > span{font-size:11px;text-transform:uppercase;letter-spacing:.7px;
+    color:var(--muted);font-weight:700}
+  input,select,textarea{
+    width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;
+    background:var(--surface-2);color:var(--text);font:inherit;font-size:14px;
+  }
+  input::placeholder,textarea::placeholder{color:#6B7486}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--primary)}
+  textarea{resize:vertical;min-height:44px}
+
+  .panel{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px;margin-bottom:12px}
+  .panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
+    margin:0 0 10px}
+  .hidden{display:none !important}
+
+  /* Phone: stacked. Tablet/iPad (>=768px): 30% order / 70% menu. */
+  .layout{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
+  .pane{min-width:0}
+  @media (min-width:768px){
+    .layout{grid-template-columns:30% minmax(0,1fr);gap:16px}
+    .pane-order{
+      position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto;
+      background:var(--surface);border:1px solid var(--line);
+      border-radius:var(--radius);padding:12px;
+    }
+  }
+
+  .section-title{display:flex;align-items:center;gap:8px;margin:16px 2px 8px}
+  .section-title h2{font-size:15px;margin:0;font-weight:700}
+  .section-title .spacer{flex:1}
+  .count{font-size:12px;color:var(--muted)}
+
+  .search{display:flex;align-items:center;gap:8px;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:10px;padding:0 10px;margin-bottom:12px}
+  .search:focus-within{border-color:var(--primary)}
+  .search .searchicon{color:var(--muted);font-size:14px}
+  .search input{flex:1;border:0;background:transparent;padding:11px 0;
+    color:var(--text);font:inherit;font-size:14px;outline:none}
+  .search input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+  .search .clearbtn{background:transparent;border:0;color:var(--muted);
+    font-size:14px;cursor:pointer;padding:6px;line-height:1}
+  .search .clearbtn:hover{color:var(--text)}
+
+  .groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:14px;align-content:start}
+
+  /* Group cards are filled with the group colour; items sit on translucent chips. */
+  .group{
+    background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);overflow:hidden;
+    box-shadow:var(--shadow);
+  }
+  .group-head{
+    display:flex;align-items:center;gap:10px;width:100%;padding:12px;
+    background:var(--surface-2);border:0;border-bottom:1px solid var(--line);
+    font:inherit;color:inherit;cursor:pointer;text-align:left;
+  }
+  .group-head h3{margin:0;font-size:14px;font-weight:700;letter-spacing:.2px}
+  .group-head .count{font-size:11px;color:var(--muted);font-weight:600}
+  .group-head .spacer{flex:1}
+  .group-head .chev{color:var(--muted);font-size:12px;transition:transform .15s}
+  .group.collapsed .chev{transform:rotate(-90deg)}
+  .group .items{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px}
+  .group.collapsed .items{display:none}
+  .items button{
+    display:flex;flex-direction:column;justify-content:space-between;gap:6px;
+    min-height:70px;text-align:left;padding:10px;border:1px solid var(--line);
+    border-radius:10px;background:var(--surface-2);cursor:pointer;font:inherit;color:inherit;
+  }
+  .items button:active{transform:scale(.985)}
+  .items button .name{font-weight:600;font-size:14px}
+  .items button .meta{display:flex;justify-content:space-between;gap:6px;
+    font-size:11px;color:var(--muted)}
+  .items button.unavailable{opacity:.45;cursor:not-allowed}
+  .items button .soldout{color:var(--err);font-weight:700}
+
+  .group.has-color{background:var(--group-color);border-color:var(--group-color)}
+  .group.has-color .group-head{
+    background:transparent;border-bottom-color:rgba(255,255,255,.28);color:#fff;
+  }
+  .group.has-color .group-head .count{color:rgba(255,255,255,.75)}
+  .group.has-color .group-head .chev{color:rgba(255,255,255,.85)}
+  .group.has-color .items button{
+    background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.32);color:#fff;
+  }
+  .group.has-color .items button .meta{color:rgba(255,255,255,.80)}
+  .group.has-color .items button .soldout{color:#FFE08A}
+  .group.has-color .items button.unavailable{opacity:.5}
+
+  .empty{padding:22px 12px;text-align:center;color:var(--muted);font-size:13px;
+    background:var(--surface-2);border-radius:var(--radius);border:1px dashed var(--line)}
+
+  .cart{list-style:none;margin:0;padding:0;border:1px solid var(--line);
+    border-radius:var(--radius);overflow:hidden}
+  .cart li{display:flex;align-items:center;gap:10px;padding:9px 11px;
+    border-bottom:1px solid var(--line);background:var(--surface-2)}
+  .cart li:last-child{border-bottom:0}
+  .cart .info{flex:1;min-width:0}
+  .cart .info .n{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cart .info .s{font-size:11px;color:var(--muted)}
+  .stepper{display:flex;align-items:center;gap:2px;border:1px solid var(--line);
+    border-radius:999px;padding:2px}
+  .stepper button{width:30px;height:30px;border:0;background:transparent;border-radius:999px;
+    font-size:18px;line-height:1;cursor:pointer;color:var(--text)}
+  .stepper button:disabled{color:#4B5361;cursor:not-allowed}
+  .stepper .q{min-width:22px;text-align:center;font-weight:700;font-size:14px}
+  .price{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;min-width:58px;text-align:right}
+  .del{background:transparent;border:0;color:var(--err);font-size:17px;cursor:pointer;padding:6px}
+
+  .totals{display:flex;gap:12px;align-items:center;margin-top:10px;font-size:13px;color:var(--muted)}
+  .totals b{color:var(--text)}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    width:100%;padding:13px 16px;border:0;border-radius:12px;background:var(--primary);
+    color:var(--on-primary);font:inherit;font-weight:700;font-size:15px;cursor:pointer;
+    margin-top:12px;
+  }
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .btn.secondary{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:600}
+  .btn-row{display:flex;gap:8px}
+  .btn-row .btn{margin-top:0}
+  .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;border-radius:999px;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  details.payload{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+  details.payload summary{cursor:pointer;padding:10px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+  details.payload pre{margin:0;padding:0 12px 12px;font-size:11.5px;overflow:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#C7D0DE}
+
+  .toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+    background:#2B3342;color:#fff;padding:11px 16px;border-radius:10px;font-size:13px;
+    max-width:90%;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{background:#7F1D1D}
+  .toast.ok{background:#14532D}
+
+  .switch{display:flex;align-items:center;gap:10px;font-size:13px}
+  .switch input{width:auto}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+  .waiter-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.16);color:inherit;border-radius:999px;padding:4px 10px;
+    font:inherit;font-size:12px;font-weight:600;cursor:pointer;max-width:130px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .waiter-chip:hover{background:rgba(255,255,255,.16)}
+
+  .startscreen{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:rgba(6,8,12,.72);padding:20px}
+  .startcard{background:var(--surface);color:var(--text);border-radius:16px;padding:20px;
+    width:100%;max-width:400px;box-shadow:0 12px 40px rgba(0,0,0,.5);border:1px solid var(--line)}
+  .startcard h2{margin:0 0 4px;font-size:19px}
+  .startcard p{margin:0 0 16px;color:var(--muted);font-size:13px}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="appbar">
+    <h1>Waiter Staff</h1>
+    <span class="tag">Mockup</span>
+    <span class="spacer"></span>
+    <button class="waiter-chip" id="waiterChip" title="Change waiter">—</button>
+    <span class="status"><span class="dot" id="menuDot"></span><span id="menuStatus">loading</span></span>
+    <button class="iconbtn" id="gear" title="Settings" aria-label="Settings">&#9881;</button>
+  </header>
+
+  <main>
+    <div class="notice" id="mockNotice">
+      <b>Mockup.</b> Orders are not sent unless you enable <b>Live send</b> below.
+    </div>
+
+    <!-- Settings / connection -->
+    <section class="panel hidden" id="configPanel">
+      <h2>Connection</h2>
+      <div class="field">
+        <span>Menu source URL</span>
+        <input id="cfgMenu" placeholder="/api/export?format=array or http://192.168.0.3:8080/menu" />
+        <div class="hint">Same-origin portal export by default. Point it at the hub's <code>/menu</code> for the live feed.</div>
+      </div>
+      <div class="row">
+        <label class="field"><span>Host IP</span><input id="cfgHost" placeholder="192.168.0.3" inputmode="decimal" /></label>
+        <label class="field"><span>Port</span><input id="cfgPort" placeholder="8080" inputmode="numeric" /></label>
+      </div>
+      <div class="row">
+        <label class="field"><span>Hub user</span><input id="cfgUser" autocomplete="off" /></label>
+        <label class="field"><span>Hub password</span><input id="cfgPass" type="password" autocomplete="off" /></label>
+      </div>
+      <label class="switch"><input type="checkbox" id="cfgLive" /> <span>Live send to hub (needs CORS-enabled hub)</span></label>
+      <div class="hint">Passwords are stored in this browser only (localStorage).</div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn secondary" id="cfgSave">Save</button>
+        <button class="btn" id="cfgReload">Reload menu</button>
+      </div>
+    </section>
+
+    <div class="layout">
+      <!-- Left pane: order (30% on tablet) -->
+      <section class="pane pane-order">
+        <div class="row">
+          <label class="field"><span>Table</span><input id="table" inputmode="numeric" placeholder="12" /></label>
+        </div>
+
+        <div class="section-title">
+          <h2>Order</h2>
+          <span class="spacer"></span>
+          <span class="count" id="cartCount">No items</span>
+        </div>
+        <ul class="cart hidden" id="cart"></ul>
+        <div class="empty" id="cartEmpty">No items added</div>
+        <div class="totals" id="totals"></div>
+
+        <div class="field" style="margin-top:12px">
+          <span>Note</span>
+          <textarea id="note" rows="2" placeholder="Allergies, serving notes..."></textarea>
+        </div>
+
+        <button class="btn" id="send">Send Order</button>
+        <button class="btn secondary" id="clear" style="margin-top:8px">Clear order</button>
+
+        <details class="payload">
+          <summary>Request preview (POST /order)</summary>
+          <pre id="preview">—</pre>
+        </details>
+      </section>
+
+      <!-- Right pane: menu (70% on tablet) -->
+      <section class="pane pane-menu">
+        <div class="section-title">
+          <h2>Menu</h2>
+          <span class="spacer"></span>
+          <span class="count" id="menuCount"></span>
+          <button class="iconbtn" id="reload" title="Reload menu" aria-label="Reload menu">&#8635;</button>
+        </div>
+        <div class="search">
+          <span class="searchicon">&#128269;</span>
+          <input id="menuSearch" type="search" placeholder="Search menu..." autocomplete="off" />
+          <button class="clearbtn hidden" id="menuSearchClear" aria-label="Clear search">&#10005;</button>
+        </div>
+        <div class="groups" id="menu"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="startscreen hidden" id="startScreen">
+  <div class="startcard">
+    <h2>Who&rsquo;s serving?</h2>
+    <p>Enter the waiter name. It is stamped on every order and kitchen ticket.</p>
+    <div class="field">
+      <span>Waiter name</span>
+      <input id="startWaiter" placeholder="e.g. Alex" autocomplete="off" />
+    </div>
+    <button class="btn" id="startContinue">Continue to menu</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SAMPLE_MENU = [
+    { sku:'bv_001', name:'Teh O', price:2.6, station:'Beverage', category:'Beverage', color:'#1565C0', available:true },
+    { sku:'bv_002', name:'Teh Tarik', price:3.0, station:'Beverage', category:'Beverage', color:'#1565C0', available:true },
+    { sku:'bv_003', name:'Milo', price:3.5, station:'Beverage', category:'Beverage', color:'#1565C0', available:true },
+    { sku:'ns_001', name:'Nasi Lemak Biasa', price:5.0, station:'Kitchen', category:'Nasi', color:'#EF6C00', available:true },
+    { sku:'ns_002', name:'Nasi Lemak Ayam', price:8.5, station:'Kitchen', category:'Nasi', color:'#EF6C00', available:true },
+    { sku:'rc_001', name:'Roti Kosong', price:2.0, station:'Griddle', category:'Roti Canai', color:'#6A1B9A', available:true },
+    { sku:'rc_002', name:'Roti Telur', price:4.0, station:'Griddle', category:'Roti Canai', color:'#6A1B9A', available:true },
+    { sku:'rc_003', name:'Roti Sardin', price:5.5, station:'Griddle', category:'Roti Canai', color:'#6A1B9A', available:false }
+  ];
+
+  var LS = {
+    menu:'wm.menuUrl', host:'wm.hostIp', port:'wm.port',
+    user:'wm.user', pass:'wm.pass', live:'wm.live',
+    table:'wm.table', waiter:'wm.waiter'
+  };
+
+  var state = { menu: [], cart: {}, settings: {}, sending: false, waiter: '', query: '' };
+
+  function $(id) { return document.getElementById(id); }
+
+  function getSettings() {
+    return {
+      menuUrl: localStorage.getItem(LS.menu) || '/api/export?format=array',
+      host: localStorage.getItem(LS.host) || '',
+      port: localStorage.getItem(LS.port) || '8080',
+      user: localStorage.getItem(LS.user) || '',
+      pass: localStorage.getItem(LS.pass) || '',
+      live: localStorage.getItem(LS.live) === 'true'
+    };
+  }
+
+  function saveSettings(s) {
+    localStorage.setItem(LS.menu, s.menuUrl || '');
+    localStorage.setItem(LS.host, s.host || '');
+    localStorage.setItem(LS.port, s.port || '');
+    localStorage.setItem(LS.user, s.user || '');
+    localStorage.setItem(LS.pass, s.pass || '');
+    localStorage.setItem(LS.live, s.live ? 'true' : 'false');
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+
+  function money(n) {
+    var v = Number(n) || 0;
+    return 'RM' + v.toFixed(2);
+  }
+
+  function toast(message, kind) {
+    var el = $('toast');
+    el.textContent = message;
+    el.className = 'toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.className = 'toast'; }, 2600);
+  }
+
+  function authHeader(s) {
+    if (!s.user && !s.pass) return {};
+    try { return { authorization: 'Basic ' + btoa(s.user + ':' + s.pass) }; }
+    catch (e) { return {}; }
+  }
+
+  function normalise(payload) {
+    var raw = payload && payload.menu != null ? payload.menu : payload;
+    var list = [];
+    if (Array.isArray(raw)) {
+      var grouped = raw.some(function (entry) {
+        return entry && typeof entry === 'object' && Array.isArray(entry.items);
+      });
+      if (grouped) {
+        // Grouped export: [{ name, color, items: [...] }]
+        raw.forEach(function (group) {
+          if (!group || !Array.isArray(group.items)) return;
+          group.items.forEach(function (item) {
+            list.push(Object.assign({}, item, {
+              group: item.group || group.name,
+              groupColor: item.groupColor || group.color || '',
+              groupName: group.name
+            }));
+          });
+        });
+      } else {
+        list = raw;
+      }
+    } else if (raw && typeof raw === 'object') {
+      Object.keys(raw).forEach(function (key) {
+        var entry = raw[key];
+        if (entry && typeof entry === 'object') {
+          list.push(Object.assign({ name: key }, entry));
+        }
+      });
+    }
+    return list.map(function (item) {
+      return {
+        sku: String(item.sku || item.id || item.name || ''),
+        name: String(item.name || ''),
+        price: Number(item.price) || 0,
+        station: String(item.station || 'KITCHEN'),
+        category: String(item.category || item.group || item.groupName || 'Menu'),
+        color: String(item.groupColor || item.color || ''),
+        available: item.available !== false
+      };
+    }).filter(function (item) { return item.name; });
+  }
+
+  function setMenuStatus(text, kind) {
+    $('menuStatus').textContent = text;
+    $('menuDot').className = 'dot' + (kind ? ' ' + kind : '');
+  }
+
+  function loadMenu() {
+    var s = getSettings();
+    state.settings = s;
+    setMenuStatus('loading');
+    $('menuCount').textContent = '';
+
+    var url = s.menuUrl || '/api/export?format=array';
+    fetch(url, { headers: authHeader(s) })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function (data) {
+        var items = normalise(data);
+        if (!items.length) throw new Error('empty menu');
+        state.menu = items;
+        setMenuStatus(items.length + ' items', 'ok');
+        renderMenu();
+      })
+      .catch(function (error) {
+        state.menu = SAMPLE_MENU.slice();
+        setMenuStatus('sample data', 'err');
+        renderMenu();
+        toast('Menu source unavailable (' + error.message + ') — using sample menu', 'err');
+      });
+  }
+
+  var collapsed = {};
+  var UNGROUPED = ['ungrouped', 'menu', 'others', 'other', ''];
+
+  function isUngrouped(name) {
+    return UNGROUPED.indexOf(String(name || '').trim().toLowerCase()) !== -1;
+  }
+
+  function tint(hex, alpha) {
+    var value = String(hex || '').replace('#', '');
+    if (value.length === 3) {
+      value = value[0] + value[0] + value[1] + value[1] + value[2] + value[2];
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(value)) return '';
+    var n = parseInt(value, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
+  }
+
+  function groupItems(items) {
+    var map = {};
+    var colors = {};
+    items.forEach(function (item) {
+      var key = (item.category || 'Others').trim() || 'Others';
+      (map[key] = map[key] || []).push(item);
+      if (!colors[key] && item.color) colors[key] = item.color;
+    });
+    return Object.keys(map)
+      .sort(function (a, b) {
+        var au = isUngrouped(a);
+        var bu = isUngrouped(b);
+        if (au !== bu) return au ? 1 : -1;
+        return a.localeCompare(b);
+      })
+      .map(function (name) {
+        return { name: name, items: map[name], color: colors[name] || '' };
+      });
+  }
+
+  function renderMenu() {
+    var host = $('menu');
+    host.innerHTML = '';
+
+    var query = String(state.query || '').trim().toLowerCase();
+    var groups = groupItems(state.menu);
+
+    if (query) {
+      groups = groups
+        .map(function (group) {
+          return {
+            name: group.name,
+            color: group.color,
+            items: group.items.filter(function (item) {
+              return item.name.toLowerCase().indexOf(query) !== -1 ||
+                item.station.toLowerCase().indexOf(query) !== -1;
+            })
+          };
+        })
+        .filter(function (group) { return group.items.length > 0; });
+    }
+
+    var matches = groups.reduce(function (total, group) {
+      return total + group.items.length;
+    }, 0);
+
+    $('menuCount').textContent = query
+      ? matches + ' result' + (matches === 1 ? '' : 's')
+      : groups.length + ' group' + (groups.length === 1 ? '' : 's') +
+        ' · ' + state.menu.length + ' items';
+
+    if (query && groups.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No items match "' + state.query.trim() + '"';
+      host.appendChild(empty);
+      return;
+    }
+
+    groups.forEach(function (group) {
+      // While searching, always show the matches (ignore collapsed state).
+      var isCollapsed = !query && !!collapsed[group.name];
+      var section = document.createElement('section');
+      section.className = 'group' + (isCollapsed ? ' collapsed' : '');
+
+      var head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'group-head';
+      head.innerHTML =
+        '<h3>' + escapeHtml(group.name) + '</h3>' +
+        '<span class="count">' + group.items.length + '</span>' +
+        '<span class="spacer"></span>' +
+        '<span class="chev">&#9660;</span>';
+
+      if (group.color) {
+        section.classList.add('has-color');
+        section.style.setProperty('--group-color', group.color);
+      }
+
+      head.addEventListener('click', function () {
+        collapsed[group.name] = !collapsed[group.name];
+        section.classList.toggle('collapsed', !!collapsed[group.name]);
+      });
+      section.appendChild(head);
+
+      var grid = document.createElement('div');
+      grid.className = 'items';
+
+      group.items.forEach(function (item) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = item.available ? '' : 'unavailable';
+        button.disabled = !item.available;
+        button.innerHTML =
+          '<span class="name">' + escapeHtml(item.name) + '</span>' +
+          '<span class="meta"><span>' + escapeHtml(item.station) + '</span>' +
+          '<span>' + (item.available ? '' : '<span class="soldout">SOLD OUT</span>') + '</span></span>';
+        button.addEventListener('click', function () { addItem(item); });
+        grid.appendChild(button);
+      });
+
+      section.appendChild(grid);
+      host.appendChild(section);
+    });
+  }
+
+  function addItem(item) {
+    if (!item.available) return;
+    var line = state.cart[item.sku];
+    if (line) line.qty += 1;
+    else state.cart[item.sku] = { item: item, qty: 1 };
+    renderCart();
+  }
+
+  function changeQty(sku, delta) {
+    var line = state.cart[sku];
+    if (!line) return;
+    line.qty += delta;
+    if (line.qty <= 0) delete state.cart[sku];
+    renderCart();
+  }
+
+  function removeLine(sku) {
+    delete state.cart[sku];
+    renderCart();
+  }
+
+  function cartLines() {
+    return Object.keys(state.cart).map(function (sku) { return state.cart[sku]; });
+  }
+
+  function buildPayload() {
+    var lines = cartLines();
+    return {
+      table: $('table').value.trim() || 'TBD',
+      server: state.waiter || '—',
+      note: $('note').value.trim(),
+      channel: 'waiter',
+      items: lines.map(function (line) {
+        return {
+          qty: line.qty,
+          name: line.item.name,
+          price: line.item.price,
+          station: line.item.station
+        };
+      })
+    };
+  }
+
+  function renderCart() {
+    var lines = cartLines();
+    var list = $('cart');
+    list.innerHTML = '';
+
+    $('cartEmpty').classList.toggle('hidden', lines.length > 0);
+    list.classList.toggle('hidden', lines.length === 0);
+    $('cartCount').textContent = lines.length
+      ? lines.reduce(function (n, line) { return n + line.qty; }, 0) + ' item(s)'
+      : 'No items';
+
+    lines.forEach(function (line) {
+      var li = document.createElement('li');
+      li.innerHTML =
+        '<span class="info"><span class="n">' + escapeHtml(line.item.name) + '</span>' +
+        '<span class="s">' + escapeHtml(line.item.station) + '</span></span>' +
+        '<span class="stepper">' +
+          '<button type="button" data-act="dec" aria-label="Decrease">&#8722;</button>' +
+          '<span class="q">' + line.qty + '</span>' +
+          '<button type="button" data-act="inc" aria-label="Increase">+</button>' +
+        '</span>' +
+        '<button class="del" type="button" data-act="del" aria-label="Remove">&#10005;</button>';
+
+      li.querySelector('[data-act="dec"]').addEventListener('click', function () { changeQty(line.item.sku, -1); });
+      li.querySelector('[data-act="inc"]').addEventListener('click', function () { changeQty(line.item.sku, 1); });
+      li.querySelector('[data-act="del"]').addEventListener('click', function () { removeLine(line.item.sku); });
+      list.appendChild(li);
+    });
+
+    $('totals').innerHTML = lines.length
+      ? '<span class="count">Prices are handled at the counter · tickets print per station</span>'
+      : '';
+
+    $('send').disabled = state.sending || lines.length === 0;
+    $('preview').textContent = JSON.stringify(buildPayload(), null, 2);
+  }
+
+  function sendOrder() {
+    if (!state.waiter) { showStart(); toast('Enter the waiter name first'); return; }
+    var lines = cartLines();
+    if (!lines.length) { toast('Add at least one item'); return; }
+
+    var payload = buildPayload();
+    var s = state.settings;
+    state.sending = true;
+    renderCart();
+
+    function reset() {
+      state.sending = false;
+      renderCart();
+    }
+
+    if (!s.live || !s.host) {
+      if (s.live && !s.host) toast('Set a Host IP to live-send; simulating instead', 'err');
+      setTimeout(function () {
+        toast('Order sent (' + payload.items.length + ' line(s), simulated)', 'ok');
+        clearOrder();
+        reset();
+      }, 550);
+      return;
+    }
+
+    fetch('http://' + s.host + ':' + s.port + '/order', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeader(s)),
+      body: JSON.stringify(payload)
+    })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (data) {
+          if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+          return data;
+        });
+      })
+      .then(function (data) {
+        toast('Order ' + (data.order_no || 'sent') + ' (' + payload.items.length + ' line(s))', 'ok');
+        clearOrder();
+      })
+      .catch(function (error) {
+        toast('Live send failed: ' + error.message + ' (browser CORS may block this)', 'err');
+      })
+      .then(reset);
+  }
+
+  function clearOrder() {
+    state.cart = {};
+    $('note').value = '';
+    renderCart();
+  }
+
+  function openConfig() {
+    var panel = $('configPanel');
+    var s = getSettings();
+    $('cfgMenu').value = s.menuUrl;
+    $('cfgHost').value = s.host;
+    $('cfgPort').value = s.port;
+    $('cfgUser').value = s.user;
+    $('cfgPass').value = s.pass;
+    $('cfgLive').checked = s.live;
+    panel.classList.toggle('hidden');
+  }
+
+  function applyWaiter() {
+    $('waiterChip').textContent = state.waiter || 'set waiter';
+  }
+
+  function showStart() {
+    $('startWaiter').value = state.waiter || '';
+    $('startScreen').classList.remove('hidden');
+    setTimeout(function () { $('startWaiter').focus(); }, 50);
+  }
+
+  function hideStart() {
+    $('startScreen').classList.add('hidden');
+  }
+
+  function submitStart() {
+    var name = $('startWaiter').value.trim();
+    if (!name) {
+      toast('Enter the waiter name');
+      return;
+    }
+    state.waiter = name;
+    localStorage.setItem(LS.waiter, name);
+    applyWaiter();
+    hideStart();
+    renderCart();
+    toast('Serving as ' + name, 'ok');
+  }
+
+  function bind() {
+    $('gear').addEventListener('click', function () { openConfig(); });
+    $('cfgSave').addEventListener('click', function () {
+      var s = {
+        menuUrl: $('cfgMenu').value.trim(),
+        host: $('cfgHost').value.trim(),
+        port: $('cfgPort').value.trim() || '8080',
+        user: $('cfgUser').value.trim(),
+        pass: $('cfgPass').value,
+        live: $('cfgLive').checked
+      };
+      saveSettings(s);
+      state.settings = s;
+      toast('Connection saved', 'ok');
+      loadMenu();
+    });
+    $('cfgReload').addEventListener('click', loadMenu);
+    $('reload').addEventListener('click', loadMenu);
+    $('send').addEventListener('click', sendOrder);
+    $('clear').addEventListener('click', clearOrder);
+
+    $('menuSearch').addEventListener('input', function (event) {
+      state.query = event.target.value;
+      $('menuSearchClear').classList.toggle('hidden', !state.query);
+      renderMenu();
+    });
+    $('menuSearchClear').addEventListener('click', function () {
+      state.query = '';
+      $('menuSearch').value = '';
+      $('menuSearchClear').classList.add('hidden');
+      renderMenu();
+      $('menuSearch').focus();
+    });
+
+    $('table').value = localStorage.getItem(LS.table) || '';
+    $('table').addEventListener('input', function () { localStorage.setItem(LS.table, $('table').value); });
+
+    $('waiterChip').addEventListener('click', showStart);
+    $('startContinue').addEventListener('click', submitStart);
+    $('startWaiter').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') submitStart();
+    });
+  }
+
+  bind();
+  state.settings = getSettings();
+  state.waiter = localStorage.getItem(LS.waiter) || '';
+  applyWaiter();
+  renderCart();
+  loadMenu();
+  if (!state.waiter) showStart();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,372 @@
+{
+  "info": {
+    "name": "Warong — Waiter → POS Hub",
+    "description": "Acts as the waiter app so you can test the order flow with a single Android device.\n\nThe Android device runs the POS Hub APK (embedded server, default port 8080). This collection sends the same requests the waiter app sends, and the hub prints the station tickets / receipt on its paired Bluetooth printer.\n\nSetup\n1. On the Android device open POS Hub → Settings → Hub and note the IP + port shown (e.g. http://192.168.0.3:8080).\n2. Set the environment variable baseUrl to that address (no trailing slash).\n3. If you set hub credentials in Settings, put them in hubUser / hubPass; otherwise leave both blank.\n4. Run 'Health' first. Then 'Create order (waiter)' — it stores the returned order_id so the pay / void / reprint requests target it.\n\nThe phone and the machine running Postman must be on the same Wi-Fi. If port 8080 is busy the hub falls back to 8081, 8082 or 8090 — check Settings → Hub.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      { "key": "username", "value": "{{hubUser}}", "type": "string" },
+      { "key": "password", "value": "{{hubPass}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "orderId", "value": "", "type": "string" },
+    { "key": "itemId", "value": "", "type": "string" },
+    { "key": "lastOrderNo", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Discovery",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('service is the pos hub', () => pm.expect(body.service).to.eql('restaurant-pos-hub'));",
+                  "pm.test('reports queue and open orders', () => {",
+                  "  pm.expect(body).to.have.property('queue');",
+                  "  pm.expect(body).to.have.property('openOrders');",
+                  "});",
+                  "console.log('auth enabled on hub:', body.auth, '| queued jobs:', body.queue, '| open orders:', body.openOrders);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Unauthenticated, so this is safe to run before configuring credentials."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Menu",
+      "item": [
+        {
+          "name": "Get menu (cached catalogue)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('has items', () => pm.expect(body.items).to.be.an('array'));",
+                  "console.log('menu items on the hub:', body.count);",
+                  "const sample = (body.items || []).slice(0, 5).map(i => i.name + ' [' + i.category + '] ' + i.color);",
+                  "console.log('sample:', sample);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/menu", "host": ["{{baseUrl}}"], "path": ["menu"] }
+          }
+        },
+        {
+          "name": "Sync menu from portal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('returned a count', () => pm.expect(body.count).to.be.a('number'));",
+                  "console.log('synced items:', body.count);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/menu/sync", "host": ["{{baseUrl}}"], "path": ["menu", "sync"] },
+            "description": "Pulls the catalogue (and group colours) from the portal configured in Settings. Run this once after installing the APK."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Orders",
+      "item": [
+        {
+          "name": "Create order (waiter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('an order id was returned', () => pm.expect(body.order_id).to.be.a('number'));",
+                  "pm.test('totals were computed by the hub', () => pm.expect(body.totals.total).to.be.above(0));",
+                  "pm.collectionVariables.set('orderId', body.order_id);",
+                  "pm.collectionVariables.set('lastOrderNo', body.order_no);",
+                  "console.log('created', body.order_no, 'total', body.totals.total);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table\": \"12\",\n  \"server\": \"{{waiterName}}\",\n  \"note\": \"Postman test order\",\n  \"channel\": \"waiter\",\n  \"items\": [\n    { \"qty\": 2, \"name\": \"Teh Tarik (Panas)\", \"price\": 2.5, \"station\": \"Beverage\" },\n    { \"qty\": 3, \"name\": \"Roti Kosong\", \"price\": 1.5, \"station\": \"Griddle\" },\n    { \"qty\": 1, \"name\": \"Nasi Lemak Ayam\", \"price\": 9.0, \"station\": \"Kitchen\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/order", "host": ["{{baseUrl}}"], "path": ["order"] },
+            "description": "Same payload the waiter app sends. Prices are ignored in favour of the hub's catalogue; each item is routed to its station printer."
+          }
+        },
+        {
+          "name": "Create order (one drink — fast print test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('orderId', body.order_id);",
+                  "pm.collectionVariables.set('lastOrderNo', body.order_no);",
+                  "console.log('created', body.order_no);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table\": \"99\",\n  \"server\": \"{{waiterName}}\",\n  \"channel\": \"waiter\",\n  \"items\": [\n    { \"qty\": 1, \"name\": \"Teh O (Panas)\", \"price\": 2.0, \"station\": \"Beverage\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/order", "host": ["{{baseUrl}}"], "path": ["order"] }
+          }
+        },
+        {
+          "name": "List open orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('orders is an array', () => pm.expect(body.orders).to.be.an('array'));",
+                  "console.log('open orders:', body.count);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/orders?status=OPEN",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"],
+              "query": [{ "key": "status", "value": "OPEN" }]
+            }
+          }
+        },
+        {
+          "name": "Get order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('has an order', () => pm.expect(body.order).to.be.an('object'));",
+                  "if (body.order && body.order.items && body.order.items[0]) { pm.collectionVariables.set('itemId', body.order.items[0].id); }",
+                  "console.log('order', body.order.order_no, 'status', body.order.status, 'total', body.order.total, '| first item id', body.order.items[0] && body.order.items[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}"]
+            },
+            "description": "Stores the first line's itemId so the quantity request below can target it."
+          }
+        },
+        {
+          "name": "Change a line's quantity",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('totals were recomputed', () => pm.expect(body.order.subtotal).to.be.above(0));",
+                  "console.log(body.order.order_no, 'now', body.order.total);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qty\": 2\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/items/{{itemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}", "items", "{{itemId}}"]
+            },
+            "description": "Sets the line quantity and recomputes subtotal/tax/total. Send qty 0 to remove the line (the last line cannot be removed). Only OPEN orders can be edited."
+          }
+        },
+        {
+          "name": "Add items to an open order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('line was added', () => pm.expect(body.order.items.length).to.be.above(1));",
+                  "console.log(body.order.order_no, 'lines', body.order.items.length, 'total', body.order.total);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"qty\": 1, \"name\": \"Roti Telur\", \"price\": 3.0, \"station\": \"Griddle\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}", "items"]
+            },
+            "description": "Amends an open order and prints a kitchen ticket for the added lines only."
+          }
+        },
+        {
+          "name": "Pay order (cash)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('order is paid', () => pm.expect(body.order.status).to.eql('PAID'));",
+                  "console.log(body.order.order_no, 'paid', body.order.total, 'change', body.order.change);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"cash\",\n  \"tendered\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}", "pay"]
+            },
+            "description": "Marks the order PAID and queues the customer receipt to the CASHIER printer. Tendered must cover the (cash-rounded) total."
+          }
+        },
+        {
+          "name": "Reprint receipt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('queued', () => pm.expect(body.status).to.eql('queued'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/reprint",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}", "reprint"]
+            }
+          }
+        },
+        {
+          "name": "Void order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('order is void', () => pm.expect(body.order.status).to.eql('VOID'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/void",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{orderId}}", "void"]
+            },
+            "description": "Paid orders cannot be voided — create a fresh order first."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "warong-menu-portal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Admin portal to maintain the Warong restaurant menu, stations and prices (backed by MongoDB).",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "dev:host": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "start:host": "next start -H 0.0.0.0 -p 3000",
+    "lint": "eslint .",
+    "seed": "node --env-file-if-exists=.env.local scripts/seed.mjs",
+    "create-tenant": "node --env-file-if-exists=.env.local scripts/create-tenant.mjs",
+    "import-menu": "node --env-file-if-exists=.env.local scripts/import-menu.mjs",
+    "repair-indexes": "node --env-file-if-exists=.env.local scripts/repair-indexes.mjs"
+  },
+  "dependencies": {
+    "mongoose": "^9.10.1",
+    "next": "^16.3.5",
+    "nodemailer": "^10.0.10",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.5"
+  }
+}

@@ -1,0 +1,34 @@
+name: restaurant_pos_hub
+description: Restaurant POS Host Hub - embedded HTTP server, SQLite print queue, sequential Classic Bluetooth SPP printing.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.4.1
+  path: ^1.9.0
+  shelf: ^1.4.1
+  http: ^1.2.0
+  flutter_bluetooth_serial: ^0.4.0
+  esc_pos_utils_plus: ^2.0.4
+  permission_handler: ^12.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  # Lets the SQLite-backed order logic run in plain unit tests.
+  sqflite_common_ffi: ^2.3.3
+
+dependency_overrides:
+  # flutter_bluetooth_serial 0.4.0 predates AGP 8 (no Gradle namespace).
+  # Vendored copy with android/build.gradle + manifest patched.
+  flutter_bluetooth_serial:
+    path: third_party/flutter_bluetooth_serial
+
+flutter:
+  uses-material-design: true

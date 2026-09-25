@@ -1,0 +1,9 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts (rebuild with `flutter build apk --release`)
+*.apk
+
+# Local archives
+restaurant-pos.zip

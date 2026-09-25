@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#10131A" />
+<title>POS Hub · Web Mockup</title>
+<style>
+  :root{
+    --primary:#2E7D32;
+    --on-primary:#ffffff;
+    --bg:#10131A;
+    --surface:#171C26;
+    --surface-2:#1D2330;
+    --line:#2A3242;
+    --text:#E7EAF0;
+    --muted:#98A2B3;
+    --ok:#4ADE80;
+    --err:#F87171;
+    --warn:#FBBF24;
+    --star:#FFD54F;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .app{max-width:1500px;margin:0 auto;min-height:100vh;background:var(--bg)}
+  .hidden{display:none !important}
+
+  header.appbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;
+    padding:12px 14px;background:var(--bg);color:var(--text);border-bottom:1px solid var(--line)}
+  header.appbar h1{font-size:17px;margin:0;font-weight:600}
+  header.appbar .tag{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+    background:rgba(46,125,50,.20);border:1px solid rgba(74,222,128,.35);color:var(--ok);
+    padding:2px 7px;border-radius:999px}
+  header.appbar .spacer{flex:1}
+  .iconbtn{background:transparent;border:0;color:inherit;font-size:19px;line-height:1;
+    width:40px;height:40px;border-radius:999px;cursor:pointer}
+  .iconbtn:hover{background:rgba(255,255,255,.08)}
+  .status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:999px;background:#5B6472;display:inline-block}
+  .dot.ok{background:var(--ok)}
+  .dot.err{background:var(--err)}
+
+  nav.tabs{display:flex;gap:4px;padding:8px 12px 0;border-bottom:1px solid var(--line);
+    position:sticky;top:64px;background:var(--bg);z-index:25}
+  nav.tabs button{background:transparent;border:0;color:var(--muted);font:inherit;font-size:14px;
+    font-weight:600;padding:10px 14px;border-bottom:2px solid transparent;cursor:pointer}
+  nav.tabs button.active{color:var(--text);border-bottom-color:var(--primary)}
+  nav.tabs .badge{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;
+    background:var(--primary);color:#fff;border-radius:999px;padding:1px 7px}
+
+  main{padding:14px}
+  .row{display:flex;gap:10px}
+  .row > *{flex:1;min-width:0}
+  .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+  .field > span{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:700}
+  input,select,textarea{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;
+    background:var(--surface-2);color:var(--text);font:inherit;font-size:14px}
+  input::placeholder,textarea::placeholder{color:#6B7486}
+  input:focus,textarea:focus{outline:none;border-color:var(--primary)}
+  textarea{resize:vertical;min-height:44px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;
+    border:0;border-radius:12px;background:var(--primary);color:var(--on-primary);font:inherit;
+    font-weight:700;font-size:14px;cursor:pointer;width:100%}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .btn.secondary{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:600}
+  .btn.small{padding:9px 12px;font-size:13px;width:auto}
+  .btn-row{display:flex;gap:8px}
+  .btn-row .btn{width:auto;flex:1}
+
+  .seg-row{display:flex;gap:6px;margin-bottom:10px;max-width:420px}
+  .seg-btn{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);
+    background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;
+    font-weight:600;cursor:pointer}
+  .seg-btn.active{background:var(--primary);border-color:var(--primary);color:#fff}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+  .card h3{margin:0 0 6px;font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+  .card .big{font-size:15px;font-weight:700}
+
+  /* ---------- counter ---------- */
+  .counter{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}
+  @media (min-width:900px){
+    .counter{grid-template-columns:minmax(0,1fr) 350px}
+    .cart-panel{position:sticky;top:118px}
+  }
+  .search{display:flex;align-items:center;gap:8px;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:10px;padding:0 10px;margin-bottom:10px}
+  .search input{flex:1;border:0;background:transparent;padding:11px 0;outline:none}
+  .search .searchicon{color:var(--muted);font-size:14px}
+  .search .clearbtn{background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:14px;padding:6px}
+
+  .favs h4{margin:0 0 8px;font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+  .fav-row,.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none}
+  .fav-row::-webkit-scrollbar,.chips::-webkit-scrollbar{display:none}
+  .fav{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;
+    border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;
+    font-weight:600;cursor:pointer;white-space:nowrap}
+  .fav .star{color:var(--star)}
+  .chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;
+    border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;
+    font-weight:600;cursor:pointer;white-space:nowrap}
+  .chip .n{font-size:11px;opacity:.7}
+  .chip.active{background:var(--chip-color,var(--primary));border-color:var(--chip-color,var(--primary));color:#fff}
+
+  .group-bar{display:flex;align-items:center;gap:8px;margin:2px 2px 8px}
+  .group-bar h3{margin:0;font-size:15px;font-weight:700}
+  .group-bar .count{font-size:12px;color:var(--muted)}
+
+  .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+  .tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;gap:6px;
+    min-height:76px;text-align:left;padding:10px;border-radius:10px;cursor:pointer;font:inherit;
+    border:1px solid var(--line);background:var(--surface-2);color:var(--text)}
+  .tile:active{transform:scale(.985)}
+  .tile .name{font-weight:600;font-size:14px;padding-right:22px}
+  .tile .meta{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--muted)}
+  .tile .price{font-weight:700;color:var(--text)}
+  .tile.unavailable{opacity:.5;cursor:not-allowed}
+  .tile .soldout{color:var(--err);font-weight:700}
+  .tile .pin{position:absolute;top:4px;right:4px;border:0;background:transparent;cursor:pointer;
+    font-size:13px;padding:4px;border-radius:999px;color:var(--muted)}
+  .tile .pin.on{color:var(--star)}
+
+  .empty{padding:22px 12px;text-align:center;color:var(--muted);font-size:13px;
+    background:var(--surface-2);border-radius:var(--radius);border:1px dashed var(--line)}
+
+  .cart-line{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .cart-line:last-child{border-bottom:0}
+  .cart-line .info{flex:1;min-width:0}
+  .cart-line .n{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cart-line .s{font-size:11px;color:var(--muted)}
+  .cart-line .amt{font-weight:700;font-size:13px;min-width:60px;text-align:right}
+  .stepper{display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:999px;padding:2px}
+  .stepper button{width:28px;height:28px;border:0;background:transparent;border-radius:999px;
+    color:var(--text);font-size:17px;line-height:1;cursor:pointer}
+  .stepper .q{min-width:20px;text-align:center;font-weight:700}
+  .del{background:transparent;border:0;color:var(--err);font-size:15px;cursor:pointer;padding:4px}
+
+  .totals{margin-top:10px;font-size:13px;color:var(--muted)}
+  .totals div{display:flex;justify-content:space-between;padding:2px 0}
+  .totals .grand{color:var(--text);font-weight:700;font-size:15px;border-top:1px solid var(--line);
+    margin-top:6px;padding-top:8px}
+
+  /* ---------- orders ---------- */
+  .order-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px;margin-bottom:10px}
+  .order-card .head{display:flex;align-items:center;gap:8px}
+  .order-card .no{font-weight:700;font-size:15px}
+  .order-card .pill{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .order-card .pill.waiter{color:#93C5FD;border-color:rgba(147,197,253,.45)}
+  .order-card .pill.counter{color:#FBBF24;border-color:rgba(251,191,36,.45)}
+  .order-card .pill.paid{color:var(--ok);border-color:rgba(74,222,128,.45)}
+  .order-card .total{margin-left:auto;font-weight:700}
+  .order-card .items-list{margin:8px 0 10px;font-size:13px;color:var(--muted)}
+  .order-card .items-list div{display:flex;justify-content:space-between;gap:8px;padding:1px 0}
+  .order-card .items-list .edit-line{align-items:center;gap:8px}
+  .order-card .items-list .edit-line .line-ctrl{display:inline-flex;align-items:center;gap:2px;margin-left:auto}
+  .order-card .items-list .edit-line .line-ctrl button{width:26px;height:26px;border-radius:50%;
+    border:1px solid var(--line);background:var(--surface-2);color:var(--text);cursor:pointer;
+    font-size:13px;line-height:1}
+  .order-card .items-list .edit-line .line-ctrl button:hover{border-color:var(--primary)}
+  .order-card .items-list .edit-line .line-ctrl b{min-width:18px;text-align:center;font-size:12px}
+  .order-card .actions{display:flex;gap:8px;flex-wrap:wrap}
+
+  /* ---------- hub ---------- */
+  .hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .pill-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .pill-item{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
+    background:var(--surface-2);border-radius:999px;padding:5px 10px;font-size:12px}
+  .queue-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .queue-row:last-child{border-bottom:0}
+  .queue-row .sid{width:34px;font-weight:700;color:var(--muted)}
+  .queue-row .st{margin-left:auto;font-weight:600}
+  .st.DONE{color:var(--ok)} .st.FAILED{color:var(--err)} .st.PRINTING{color:var(--warn)}
+  .st.PENDING{color:var(--muted)}
+
+  /* ---------- modal ---------- */
+  .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:rgba(6,8,12,.72);padding:20px}
+  .modal-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;
+    width:100%;max-width:420px;box-shadow:0 12px 40px rgba(0,0,0,.55)}
+  .modal-card h2{margin:0 0 12px;font-size:18px}
+  .seg{display:flex;gap:6px;margin-bottom:14px}
+  .seg button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);
+    color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .seg button.active{background:var(--primary);border-color:var(--primary);color:#fff}
+  .change{font-weight:700;font-size:14px;margin-top:6px}
+  .change.ok{color:var(--ok)} .change.bad{color:var(--err)}
+  .modal-actions{display:flex;gap:8px;margin-top:16px}
+  .modal-actions .btn{width:auto;flex:1}
+  /* thermal-receipt preview: white paper on the dark UI */
+  .receipt{background:#fff;color:#111;border-radius:8px;padding:14px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px;line-height:1.35;white-space:pre;overflow-x:auto;max-height:52vh}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+    background:#2B3342;color:#fff;padding:11px 16px;border-radius:10px;font-size:13px;max-width:90%;
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:80}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{background:#7F1D1D} .toast.ok{background:#14532D}
+  .hint{font-size:11.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="appbar">
+    <h1>POS Hub</h1>
+    <span class="tag">mockup</span>
+    <span class="spacer"></span>
+    <span class="status"><span class="dot ok"></span><span id="serverStatus">server running · :8080</span></span>
+    <button class="iconbtn" id="gear" title="Settings" aria-label="Settings">&#9881;</button>
+  </header>
+
+  <nav class="tabs">
+    <button id="tabBtn-counter" class="active">Counter</button>
+    <button id="tabBtn-orders">Orders <span class="badge" id="openBadge">0</span></button>
+    <button id="tabBtn-history">History</button>
+    <button id="tabBtn-queue">Queue <span class="badge" id="queueBadge">0</span></button>
+  </nav>
+
+  <main>
+    <!-- ============ COUNTER ============ -->
+    <section id="tab-counter">
+      <div class="counter">
+        <div>
+          <div class="seg-row" id="typeSeg">
+            <button type="button" class="seg-btn active" data-type="dine_in">Dine-in</button>
+            <button type="button" class="seg-btn" data-type="take_away">Take away</button>
+          </div>
+          <div class="row">
+            <label class="field" id="tableField"><span>Table</span><input id="table" placeholder="12" inputmode="numeric" /></label>
+            <label class="field"><span>Server</span><input id="server" placeholder="Cashier" /></label>
+          </div>
+
+          <div class="search">
+            <span class="searchicon">&#128269;</span>
+            <input id="menuSearch" type="search" placeholder="Search all items..." autocomplete="off" />
+            <button class="clearbtn hidden" id="menuSearchClear">&#10005;</button>
+          </div>
+
+          <div class="favs" id="favs">
+            <h4>&#9733; Quick picks</h4>
+            <div class="fav-row" id="favRow"></div>
+          </div>
+
+          <div class="chips" id="chips"></div>
+          <div class="group-bar">
+            <h3 id="groupName">Menu</h3>
+            <span class="count" id="groupCount"></span>
+          </div>
+          <div class="items" id="items"></div>
+        </div>
+
+        <aside class="card cart-panel">
+          <h3>Current order <span id="cartCount" class="hint"></span></h3>
+          <div id="cartLines"></div>
+          <div class="empty" id="cartEmpty">Tap items to add them</div>
+          <div class="totals">
+            <div><span>Subtotal</span><span id="tSubtotal">RM0.00</span></div>
+            <div><span>Tax</span><span id="tTax">RM0.00</span></div>
+            <div class="grand"><span>TOTAL</span><span id="tTotal">RM0.00</span></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px">
+            <button class="btn secondary" id="sendKitchen">Create order</button>
+            <button class="btn" id="charge">Charge</button>
+          </div>
+          <button class="btn secondary" id="clearCart" style="margin-top:8px">Clear order</button>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ ORDERS ============ -->
+    <section id="tab-orders" class="hidden">
+      <div class="card">
+        <h3>Open orders</h3>
+        <div id="openOrders"></div>
+      </div>
+    </section>
+
+    <!-- ============ HISTORY (paid) ============ -->
+    <section id="tab-history" class="hidden">
+      <div class="card">
+        <h3>Paid orders</h3>
+        <div class="search" style="margin:10px 0 12px">
+          <span class="searchicon">&#128269;</span>
+          <input id="histSearch" type="search" placeholder="Search order no, table or server..." autocomplete="off" />
+        </div>
+        <div id="paidOrders"></div>
+      </div>
+    </section>
+
+    <!-- ============ QUEUE ============ -->
+    <section id="tab-queue" class="hidden">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <h3 style="margin:0">Print queue</h3>
+          <span class="hint" id="queueSummary"></span>
+          <span style="flex:1"></span>
+          <button class="btn small secondary" id="queueRetry">Retry failed</button>
+          <button class="btn small secondary" id="queueClear">Clear</button>
+        </div>
+        <div id="queue" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS (incl. hub) ============ -->
+    <section id="tab-settings" class="hidden">
+      <div class="card" style="margin-bottom:12px">
+        <h3>Settings</h3>
+        <div class="row">
+          <label class="field"><span>Restaurant</span><input id="setName" /></label>
+          <label class="field"><span>Tax %</span><input id="setTax" inputmode="decimal" /></label>
+          <label class="field"><span>Cash rounding</span><input id="setRound" inputmode="decimal" /></label>
+          <label class="field"><span>Portal URL</span><input id="setPortal" /></label>
+        </div>
+        <button class="btn secondary small" id="setSave">Save settings</button>
+      </div>
+
+      <div class="hub-grid">
+        <div class="card"><h3>IP address</h3><div class="big">192.168.0.4</div></div>
+        <div class="card"><h3>Server</h3><div class="big" style="color:var(--ok)">RUNNING on http://192.168.0.4:8080</div></div>
+        <div class="card"><h3>Bluetooth</h3><div class="big">ON · 5 paired</div></div>
+        <div class="card"><h3>Menu cache</h3><div class="big" id="hubMenu">—</div></div>
+      </div>
+
+      <div class="btn-row" style="margin-top:12px;max-width:520px">
+        <button class="btn secondary" id="hubToggle">Stop Server</button>
+        <button class="btn" id="hubSync">Sync menu</button>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>Printers</h3>
+        <div id="printers"></div>
+        <div class="pill-list">
+          <span class="pill-item"><span class="dot ok"></span> GRIDDLE → MPT-II (A1:B2:C3:D4:E5:F6)</span>
+          <span class="pill-item"><span class="dot ok"></span> KITCHEN → MPT-58 (11:22:33:44:55:66)</span>
+          <span class="pill-item"><span class="dot err"></span> WOK → not assigned</span>
+          <span class="pill-item"><span class="dot ok"></span> BEVERAGE → MPT-58 (AA:BB:CC:DD:EE:FF)</span>
+          <span class="pill-item"><span class="dot ok"></span> CASHIER → MPT-58 (12:34:56:78:9A:BC)</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>Print queue</h3>
+        <p class="hint">The queue is now its own tab at the top — with retry and clear.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- payment modal -->
+<div class="modal hidden" id="payModal">
+  <div class="modal-card">
+    <h2 id="payTitle">Charge</h2>
+    <div class="seg" id="payMethods">
+      <button data-method="cash" class="active">Cash</button>
+      <button data-method="card">Card</button>
+      <button data-method="ewallet">E-Wallet</button>
+    </div>
+    <label class="field" id="tenderField">
+      <span>Tendered</span>
+      <input id="tendered" inputmode="decimal" />
+    </label>
+    <div class="change ok" id="changeText"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="payCancel">Cancel</button>
+      <button class="btn" id="payConfirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="receiptModal">
+  <div class="modal-card" style="max-width:400px">
+    <h2 style="font-size:15px" id="receiptTitle">Receipt</h2>
+    <div class="receipt" id="receiptBody"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="receiptClose">Close</button>
+      <button class="btn" id="receiptPrint">Reprint</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="addModal">
+  <div class="modal-card" style="max-width:480px">
+    <h2 id="addTitle">Add items</h2>
+    <div class="search" style="margin:10px 0">
+      <span class="searchicon">&#128269;</span>
+      <input id="addSearch" type="search" placeholder="Search the catalogue" autocomplete="off" />
+    </div>
+    <div id="addList" style="max-height:50vh;overflow:auto"></div>
+    <div class="modal-actions">
+      <button class="btn" id="addClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var LS = {
+    menu: 'pos.menuUrl', group: 'pos.group', favs: 'pos.favs',
+    orders: 'pos.orders.v2', settings: 'pos.settings', table: 'pos.table'
+  };
+
+  var DEFAULT_FAVS = [
+    'Teh O (Panas)', 'Teh O (Sejuk)', 'Roti Kosong', 'Nasi Lemak Biasa',
+    'Kopi O (Panas)', 'Milo (Panas)', 'Roti Telur', 'Mee Goreng Mamak'
+  ];
+
+  // Fallback so the mockup still demonstrates the flow without the portal.
+  var SAMPLE_MENU = [
+    { sku:'bv_001', name:'Teh O (Panas)', price:2.0, station:'Beverage', category:'Minuman', color:'#1565C0', available:true },
+    { sku:'bv_002', name:'Teh O (Sejuk)', price:3.0, station:'Beverage', category:'Minuman', color:'#1565C0', available:true },
+    { sku:'bv_003', name:'Teh Tarik (Panas)', price:2.5, station:'Beverage', category:'Minuman', color:'#1565C0', available:true },
+    { sku:'bv_004', name:'Milo (Panas)', price:3.0, station:'Beverage', category:'Minuman', color:'#1565C0', available:true },
+    { sku:'bv_005', name:'Milo (Sejuk)', price:4.0, station:'Beverage', category:'Minuman', color:'#1565C0', available:true },
+    { sku:'ab_001', name:'Oren', price:5.0, station:'Beverage', category:'Air Buah', color:'#D34AA1', available:true },
+    { sku:'ns_001', name:'Nasi Lemak Biasa', price:4.0, station:'Kitchen', category:'Nasi Lemak', color:'#EF6C00', available:true },
+    { sku:'ns_002', name:'Nasi Lemak Ayam', price:9.0, station:'Kitchen', category:'Nasi Lemak', color:'#EF6C00', available:true },
+    { sku:'rc_001', name:'Roti Kosong', price:1.5, station:'Griddle', category:'Roti Canai', color:'#6A1B9A', available:true },
+    { sku:'rc_002', name:'Roti Telur', price:3.0, station:'Griddle', category:'Roti Canai', color:'#6A1B9A', available:true },
+    { sku:'rc_003', name:'Roti Sardin', price:4.0, station:'Griddle', category:'Roti Canai', color:'#6A1B9A', available:false },
+    { sku:'gg_001', name:'Mee Goreng Mamak', price:8.0, station:'Wok', category:'Goreng-goreng', color:'#D84315', available:true }
+  ];
+
+  var state = {
+    menu: [], cart: {}, orders: [], query: '', activeGroup: '', favs: [],
+    currency: 'RM', taxRate: 0.10, rounding: 0.05, tab: 'counter',
+    pay: null, addTarget: null, orderType: 'dine_in'
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+  function round2(v) { return Math.round(v * 100) / 100; }
+  function roundTo(v, step) { return step > 0 ? round2(Math.round(v / step) * step) : round2(v); }
+  function money(v) { return state.currency + Number(v || 0).toFixed(2); }
+  function toast(msg, kind) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.className = 'toast'; }, 2500);
+  }
+  function readJSON(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) { return fallback; }
+  }
+  function writeJSON(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+
+  // ---------------------------------------------------------------- menu
+
+  function normalise(payload) {
+    var raw = payload && payload.menu != null ? payload.menu : payload;
+    var list = [];
+    if (Array.isArray(raw)) {
+      var grouped = raw.some(function (e) { return e && typeof e === 'object' && Array.isArray(e.items); });
+      if (grouped) {
+        raw.forEach(function (group) {
+          if (!group || !Array.isArray(group.items)) return;
+          group.items.forEach(function (item) {
+            list.push(Object.assign({}, item, {
+              group: item.group || group.name,
+              groupColor: item.groupColor || group.color || ''
+            }));
+          });
+        });
+      } else { list = raw; }
+    } else if (raw && typeof raw === 'object') {
+      Object.keys(raw).forEach(function (key) {
+        var entry = raw[key];
+        if (entry && typeof entry === 'object') list.push(Object.assign({ name: key }, entry));
+      });
+    }
+    return list.map(function (item) {
+      return {
+        sku: String(item.sku || item.id || item.name || ''),
+        name: String(item.name || ''),
+        price: Number(item.price) || 0,
+        station: String(item.station || 'KITCHEN'),
+        category: String(item.category || item.group || 'Menu'),
+        color: String(item.groupColor || item.color || ''),
+        available: item.available !== false
+      };
+    }).filter(function (item) { return item.name; });
+  }
+
+  function loadMenu() {
+    var url = localStorage.getItem(LS.menu) || '/api/export?format=grouped';
+    fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        var items = normalise(data);
+        if (!items.length) throw new Error('empty');
+        if (data.currency) state.currency = String(data.currency);
+        if (typeof data.taxRate === 'number') state.taxRate = data.taxRate;
+        state.menu = items;
+        syncFavs();
+        renderAll();
+        renderHub();
+      })
+      .catch(function () {
+        state.menu = SAMPLE_MENU.slice();
+        syncFavs();
+        renderAll();
+        renderHub();
+        toast('Menu unavailable — using sample menu', 'err');
+      });
+  }
+
+  function syncFavs() {
+    var names = {};
+    state.menu.forEach(function (item) { names[item.name] = true; });
+    state.favs = (state.favs.length ? state.favs : DEFAULT_FAVS.slice()).filter(function (n) { return names[n]; });
+  }
+  function toggleFav(name) {
+    var i = state.favs.indexOf(name);
+    if (i >= 0) state.favs.splice(i, 1); else state.favs.push(name);
+    writeJSON(LS.favs, state.favs);
+    renderAll();
+  }
+
+  function groups() {
+    var map = {}, colors = {}, order = [];
+    state.menu.forEach(function (item) {
+      var key = (item.category || 'Others').trim() || 'Others';
+      if (!map[key]) { map[key] = []; order.push(key); }
+      map[key].push(item);
+      if (!colors[key] && item.color) colors[key] = item.color;
+    });
+    return order.map(function (name) {
+      return { name: name, items: map[name], color: colors[name] || '' };
+    });
+  }
+
+  // ---------------------------------------------------------------- orders
+
+  function seedOrders() {
+    var now = Date.now();
+    var p = dayPrefix();
+    return [
+      { no: p + '-001-3', channel: 'waiter', status: 'PAID', table: '3', server: 'Aina',
+        method: 'cash', tendered: 20, paidAt: now - 45 * 60000,
+        items: [{ name: 'Nasi Lemak Biasa', qty: 2 }, { name: 'Teh O (Panas)', qty: 2 }] },
+      { no: p + '-002-9', channel: 'counter', status: 'PAID', table: '9', server: 'Cashier',
+        method: 'card', tendered: 0, paidAt: now - 12 * 60000,
+        items: [{ name: 'Roti Kosong', qty: 3 }, { name: 'Teh Tarik (Panas)', qty: 1 }] },
+      { no: p + '-003-7', channel: 'waiter', status: 'OPEN', table: '7', server: 'Aina',
+        items: [{ name: 'Teh Tarik (Panas)', qty: 2 }, { name: 'Roti Kosong', qty: 3 }] },
+      { no: p + '-004-12', channel: 'waiter', status: 'OPEN', table: '12', server: 'Alex',
+        items: [{ name: 'Nasi Lemak Ayam', qty: 1 }, { name: 'Milo (Sejuk)', qty: 1 }] }
+    ];
+  }
+  function loadOrders() {
+    state.orders = readJSON(LS.orders, null) || seedOrders();
+  }
+  function saveOrders() { writeJSON(LS.orders, state.orders); }
+  function priceOf(name) {
+    var found = state.menu.filter(function (m) { return m.name === name; })[0];
+    return found ? found.price : 0;
+  }
+  function orderSubtotal(order) {
+    return order.items.reduce(function (sum, item) { return sum + priceOf(item.name) * item.qty; }, 0);
+  }
+  function orderTotals(order) {
+    var subtotal = round2(orderSubtotal(order));
+    var tax = round2(subtotal * state.taxRate);
+    return { subtotal: subtotal, tax: tax, total: round2(subtotal + tax) };
+  }
+  function dayPrefix() {
+    var d = new Date();
+    function two(n) { return String(n).padStart(2, '0'); }
+    return String(d.getFullYear() % 100) + two(d.getMonth() + 1) + two(d.getDate());
+  }
+
+  /// Order numbers: YYMMDD-NNN-TABLE for dine-in, YYMMDD-TA-NNN for take-away.
+  function nextOrderNo(tableNo) {
+    var prefix = dayPrefix();
+    var today = state.orders.filter(function (o) {
+      return String(o.no).indexOf(prefix + '-') === 0;
+    });
+    var running = String(today.length + 1).padStart(3, '0');
+    var table = String(tableNo || '').replace(/[^A-Za-z0-9]/g, '');
+    if (!table) return prefix + '-TA-' + running;
+    return prefix + '-' + running + '-' + table;
+  }
+
+  /// Dine-in orders must carry a table number.
+  function tableProblem(tableNo) {
+    if (state.orderType === 'dine_in' && !String(tableNo || '').trim()) {
+      return 'Enter a table number for dine-in — or switch to Take away';
+    }
+    return '';
+  }
+
+  /// Take-away has no table: hide the field and drop any leftover number.
+  function applyOrderType() {
+    var takeAway = state.orderType === 'take_away';
+    $('tableField').classList.toggle('hidden', takeAway);
+    if (takeAway) $('table').value = '';
+  }
+
+  // ------------------------------------------------------------------ cart
+
+  function cartLines() { return Object.keys(state.cart).map(function (sku) { return state.cart[sku]; }); }
+  function cartQty() { return cartLines().reduce(function (n, l) { return n + l.qty; }, 0); }
+  function cartTotals(method) {
+    var subtotal = round2(cartLines().reduce(function (s, l) { return s + l.item.price * l.qty; }, 0));
+    var tax = round2(subtotal * state.taxRate);
+    var total = round2(subtotal + tax);
+    var payable = method === 'cash' ? roundTo(total, state.rounding) : total;
+    return { subtotal: subtotal, tax: tax, total: total, payable: payable };
+  }
+  function addItem(item) {
+    if (!item.available) { toast(item.name + ' is sold out'); return; }
+    var line = state.cart[item.sku];
+    if (line) line.qty += 1; else state.cart[item.sku] = { item: item, qty: 1 };
+    renderAll();
+    toast(item.name + ' added', 'ok');
+  }
+  function changeQty(sku, delta) {
+    var line = state.cart[sku];
+    if (!line) return;
+    line.qty += delta;
+    if (line.qty <= 0) delete state.cart[sku];
+    renderAll();
+  }
+  function removeLine(sku) { delete state.cart[sku]; renderAll(); }
+
+  // --------------------------------------------------------------- render
+
+  function renderAll() {
+    renderMenuArea();
+    renderCart();
+    renderOrders();
+    renderHistory();
+    $('openBadge').textContent = state.orders.filter(function (o) { return o.status === 'OPEN'; }).length;
+  }
+
+  function renderMenuArea() {
+    var query = state.query.trim().toLowerCase();
+    var list = groups();
+
+    if (query) {
+      $('chips').classList.add('hidden');
+      $('favs').classList.add('hidden');
+      var found = [];
+      list.forEach(function (g) {
+        g.items.forEach(function (item) {
+          if (item.name.toLowerCase().indexOf(query) !== -1 ||
+              item.station.toLowerCase().indexOf(query) !== -1) {
+            found.push({ item: item, group: g.name });
+          }
+        });
+      });
+      $('groupName').textContent = 'Search results';
+      $('groupCount').textContent = found.length + ' match' + (found.length === 1 ? '' : 'es');
+      var host = $('items');
+      host.innerHTML = '';
+      if (!found.length) {
+        host.innerHTML = '<div class="empty">No items match "' + esc(state.query.trim()) + '"</div>';
+        return;
+      }
+      found.forEach(function (r) {
+        host.appendChild(tile(r.item, { plain: true, groupLabel: r.group }));
+      });
+      return;
+    }
+
+    $('chips').classList.remove('hidden');
+    $('favs').classList.toggle('hidden', state.favs.length === 0);
+    renderFavs();
+    renderChips(list);
+  }
+
+  function renderFavs() {
+    var host = $('favRow');
+    host.innerHTML = '';
+    state.favs.forEach(function (name) {
+      var item = state.menu.filter(function (m) { return m.name === name; })[0];
+      if (!item) return;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fav';
+      b.innerHTML = '<span class="star">&#9733;</span> ' + esc(item.name);
+      b.addEventListener('click', function () { addItem(item); });
+      host.appendChild(b);
+    });
+  }
+
+  function renderChips(list) {
+    var host = $('chips');
+    host.innerHTML = '';
+    if (!list.length) { $('groupName').textContent = 'Menu'; $('groupCount').textContent = ''; return; }
+
+    var active = list.filter(function (g) { return g.name === state.activeGroup; })[0] || list[0];
+    state.activeGroup = active.name;
+
+    list.forEach(function (g) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (g.name === active.name ? ' active' : '');
+      if (g.color) b.style.setProperty('--chip-color', g.color);
+      b.innerHTML = esc(g.name) + ' <span class="n">' + g.items.length + '</span>';
+      b.addEventListener('click', function () {
+        state.activeGroup = g.name;
+        localStorage.setItem(LS.group, g.name);
+        renderAll();
+      });
+      host.appendChild(b);
+    });
+
+    $('groupName').textContent = active.name;
+    $('groupCount').textContent = active.items.length + ' item' + (active.items.length === 1 ? '' : 's');
+
+    var items = $('items');
+    items.innerHTML = '';
+    active.items.forEach(function (item) { items.appendChild(tile(item, { color: active.color })); });
+  }
+
+  function tile(item, opts) {
+    opts = opts || {};
+    var b = document.createElement('div');
+    b.className = 'tile' + (item.available ? '' : ' unavailable');
+    if (opts.color) {
+      b.style.borderColor = hexA(opts.color, 0.5);
+      b.style.background = hexA(opts.color, 0.18);
+      b.style.color = '#fff';
+    }
+    var isFav = state.favs.indexOf(item.name) >= 0;
+    b.innerHTML =
+      '<span class="name">' + esc(item.name) + '</span>' +
+      '<span class="meta"><span>' + esc(opts.groupLabel || item.station) + '</span>' +
+      '<span class="price">' + money(item.price) + '</span></span>' +
+      (item.available ? '' : '<span class="soldout">SOLD OUT</span>') +
+      '<button class="pin' + (isFav ? ' on' : '') + '" type="button">' + (isFav ? '&#9733;' : '&#9734;') + '</button>';
+    b.addEventListener('click', function () { addItem(item); });
+    b.querySelector('.pin').addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleFav(item.name);
+    });
+    return b;
+  }
+
+  function hexA(hex, alpha) {
+    var v = String(hex || '').replace('#', '');
+    if (v.length === 3) v = v[0]+v[0]+v[1]+v[1]+v[2]+v[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(v)) return '';
+    var n = parseInt(v, 16);
+    return 'rgba(' + ((n>>16)&255) + ',' + ((n>>8)&255) + ',' + (n&255) + ',' + alpha + ')';
+  }
+
+  function renderCart() {
+    var lines = cartLines();
+    var host = $('cartLines');
+    host.innerHTML = '';
+    $('cartEmpty').classList.toggle('hidden', lines.length > 0);
+    $('cartCount').textContent = lines.length ? '· ' + cartQty() + ' item(s)' : '';
+
+    lines.forEach(function (line) {
+      var div = document.createElement('div');
+      div.className = 'cart-line';
+      div.innerHTML =
+        '<span class="info"><span class="n">' + esc(line.item.name) + '</span>' +
+        '<span class="s">' + esc(line.item.station) + '</span></span>' +
+        '<span class="stepper"><button type="button" data-a="dec">&#8722;</button>' +
+        '<span class="q">' + line.qty + '</span>' +
+        '<button type="button" data-a="inc">+</button></span>' +
+        '<span class="amt">' + money(line.item.price * line.qty) + '</span>' +
+        '<button class="del" type="button" data-a="del">&#10005;</button>';
+      div.querySelector('[data-a="dec"]').addEventListener('click', function () { changeQty(line.item.sku, -1); });
+      div.querySelector('[data-a="inc"]').addEventListener('click', function () { changeQty(line.item.sku, 1); });
+      div.querySelector('[data-a="del"]').addEventListener('click', function () { removeLine(line.item.sku); });
+      host.appendChild(div);
+    });
+
+    var t = cartTotals('cash');
+    $('tSubtotal').textContent = money(t.subtotal);
+    $('tTax').textContent = money(t.tax);
+    $('tTotal').textContent = money(t.total);
+    $('charge').disabled = lines.length === 0;
+    $('sendKitchen').disabled = lines.length === 0;
+  }
+
+  function renderOrders() {
+    var open = state.orders.filter(function (o) { return o.status === 'OPEN'; });
+
+    var host = $('openOrders');
+    host.innerHTML = '';
+    if (!open.length) host.innerHTML = '<div class="empty">No open orders</div>';
+    open.forEach(function (order) {
+      var t = orderTotals(order);
+      var card = document.createElement('div');
+      card.className = 'order-card';
+      card.innerHTML =
+        '<div class="head"><span class="no">' + esc(order.no) + '</span>' +
+        '<span class="pill ' + esc(order.channel) + '">' + esc(order.channel) + '</span>' +
+        (order.orderType === 'take_away' ? '<span class="pill">TAKE AWAY</span>' : '') +
+        '<span class="total">' + money(t.total) + '</span></div>' +
+        '<div class="hint">Table ' + esc(order.table) + ' · ' + esc(order.server) +
+        ' · ' + order.items.reduce(function (n, i) { return n + i.qty; }, 0) + ' item(s)' +
+        ' · adjust lines or add items</div>' +
+        '<div class="items-list">' + order.items.map(function (item, index) {
+          return '<div class="edit-line">' +
+            '<span>' + item.qty + '× ' + esc(item.name) + '</span>' +
+            '<span class="line-ctrl">' +
+              '<button type="button" data-a="dec" data-i="' + index + '" title="Reduce">&#8722;</button>' +
+              '<b>' + item.qty + '</b>' +
+              '<button type="button" data-a="inc" data-i="' + index + '" title="Add one">+</button>' +
+              '<button type="button" data-a="rm" data-i="' + index + '" title="Remove line">&#10005;</button>' +
+            '</span>' +
+            '<span>' + money(priceOf(item.name) * item.qty) + '</span>' +
+          '</div>';
+        }).join('') + '</div>' +
+        '<div class="actions">' +
+        '<button class="btn small" data-a="charge">Charge this order</button>' +
+        '<button class="btn small secondary" data-a="additems">Add items</button>' +
+        '<button class="btn small secondary" data-a="void">Void</button>' +
+        '<button class="btn small secondary" data-a="receipt">Reprint receipt</button>' +
+        '</div>';
+
+      Array.prototype.forEach.call(card.querySelectorAll('[data-a]'), function (button) {
+        button.addEventListener('click', function () {
+          var action = button.getAttribute('data-a');
+          if (action === 'charge') { openPayment(order); return; }
+          if (action === 'additems') { openAddItems(order); return; }
+          if (action === 'void') {
+            order.status = 'VOID';
+            saveOrders();
+            renderAll();
+            toast(order.no + ' voided');
+            return;
+          }
+          if (action === 'receipt') { toast('Receipt queued for ' + order.no); return; }
+
+          var index = Number(button.getAttribute('data-i'));
+          var target = order.items[index];
+          if (!target) return;
+
+          if (action === 'inc') target.qty += 1;
+          if (action === 'dec') target.qty -= 1;
+          if (action === 'rm') target.qty = 0;
+
+          if (target.qty <= 0) {
+            if (order.items.length === 1) {
+              toast('Last line — void the order instead');
+              return;
+            }
+            order.items.splice(index, 1);
+          }
+          saveOrders();
+          renderAll();
+        });
+      });
+      host.appendChild(card);
+    });
+  }
+
+  /// Dedicated history page: every settled order, with receipt view / reprint.
+  function renderHistory() {
+    var query = ($('histSearch') ? $('histSearch').value : '').trim().toLowerCase();
+    var paid = state.orders
+      .filter(function (o) { return o.status !== 'OPEN'; })
+      .filter(function (o) {
+        if (!query) return true;
+        return o.no.toLowerCase().indexOf(query) !== -1 ||
+          String(o.table).toLowerCase().indexOf(query) !== -1 ||
+          String(o.server).toLowerCase().indexOf(query) !== -1;
+      })
+      .sort(function (a, b) { return (b.paidAt || 0) - (a.paidAt || 0); });
+
+    var host = $('paidOrders');
+    host.innerHTML = '';
+    if (!paid.length) {
+      host.innerHTML = '<div class="empty">' +
+        (query ? 'No paid orders match' : 'Nothing settled yet') + '</div>';
+      return;
+    }
+
+    paid.forEach(function (order) {
+      var t = orderTotals(order);
+      var card = document.createElement('div');
+      card.className = 'order-card';
+      card.innerHTML =
+        '<div class="head"><span class="no">' + esc(order.no) + '</span>' +
+        '<span class="pill ' + esc(order.channel) + '">' + esc(order.channel) + '</span>' +
+        '<span class="pill ' + (order.status === 'PAID' ? 'paid' : '') + '">' + esc(order.status) + '</span>' +
+        (order.orderType === 'take_away' ? '<span class="pill">TAKE AWAY</span>' : '') +
+        '<span class="total">' + money(t.total) + '</span></div>' +
+        '<div class="hint">Table ' + esc(order.table) + ' · ' + esc(order.server) +
+        (order.paidAt ? ' · ' + timeLabel(order.paidAt) : '') +
+        (order.method ? ' · ' + esc(methodLabel(order.method)) : '') + '</div>' +
+        '<div class="items-list">' + order.items.map(function (i) {
+          return '<div><span>' + i.qty + '× ' + esc(i.name) + '</span><span>' + money(priceOf(i.name) * i.qty) + '</span></div>';
+        }).join('') + '</div>' +
+        '<div class="actions">' +
+        '<button class="btn small" data-a="view">View receipt</button>' +
+        '<button class="btn small secondary" data-a="reprint">Reprint</button>' +
+        '</div>';
+      card.querySelector('[data-a="view"]').addEventListener('click', function () { openReceipt(order); });
+      card.querySelector('[data-a="reprint"]').addEventListener('click', function () {
+        toast('Receipt queued for ' + order.no, 'ok');
+      });
+      host.appendChild(card);
+    });
+  }
+
+  // ------------------------------------------------------------- receipts
+
+  var RECEIPT_WIDTH = 32;
+
+  function methodLabel(method) {
+    if (method === 'cash') return 'Cash';
+    if (method === 'card') return 'Card';
+    if (method === 'ewallet') return 'E-Wallet';
+    return method || '';
+  }
+  function restaurantName() {
+    return ($('setName') && $('setName').value.trim()) || 'Warong Pak Jabit';
+  }
+  function timeLabel(ms) {
+    var d = new Date(ms);
+    function two(n) { return String(n).padStart(2, '0'); }
+    return two(d.getDate()) + '/' + two(d.getMonth() + 1) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
+  }
+  function dateLabel(ms) {
+    var d = new Date(ms);
+    function two(n) { return String(n).padStart(2, '0'); }
+    return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) +
+      ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
+  }
+  function center(text, width) {
+    var pad = Math.max(0, Math.floor((width - text.length) / 2));
+    return ' '.repeat(pad) + text;
+  }
+  function padRow(left, right) {
+    var space = RECEIPT_WIDTH - String(right).length - String(left).length;
+    return String(left) + (space > 0 ? ' '.repeat(space) : ' ') + String(right);
+  }
+  function receiptText(order) {
+    var t = orderTotals(order);
+    var payable = order.method === 'cash' ? roundTo(t.total, state.rounding) : t.total;
+    var tendered = order.method === 'cash' ? (Number(order.tendered) || payable) : payable;
+    var change = round2(tendered - payable);
+    var rule = '-'.repeat(RECEIPT_WIDTH);
+    var lines = [
+      center(restaurantName().toUpperCase(), RECEIPT_WIDTH),
+      center(order.paidAt ? dateLabel(order.paidAt) : '', RECEIPT_WIDTH),
+      rule,
+      'Order: ' + order.no,
+      'Table: ' + order.table,
+      order.orderType === 'take_away' ? 'Type:  TAKE AWAY' : 'Type:  Dine-in',
+      'Server: ' + order.server,
+      rule
+    ];
+    order.items.forEach(function (item) {
+      lines.push(item.name);
+      lines.push(padRow('  ' + item.qty + ' x ' + priceOf(item.name).toFixed(2),
+        (priceOf(item.name) * item.qty).toFixed(2)));
+    });
+    lines.push(rule);
+    lines.push(padRow('Subtotal', state.currency + t.subtotal.toFixed(2)));
+    lines.push(padRow('Tax (' + (state.taxRate * 100).toFixed(0) + '%)',
+      state.currency + t.tax.toFixed(2)));
+    lines.push(padRow('TOTAL', state.currency + payable.toFixed(2)));
+    if (order.method) {
+      lines.push(padRow(methodLabel(order.method), state.currency + tendered.toFixed(2)));
+      if (order.method === 'cash' && change > 0) {
+        lines.push(padRow('Change', state.currency + change.toFixed(2)));
+      }
+    }
+    lines.push(rule);
+    lines.push(center('Thank you!', RECEIPT_WIDTH));
+    return lines.join('\n');
+  }
+  function openReceipt(order) {
+    $('receiptTitle').textContent = 'Receipt · ' + order.no;
+    $('receiptBody').textContent = receiptText(order);
+    $('receiptModal').classList.remove('hidden');
+  }
+
+  // --------------------------------------------------- amending an order
+
+  function openAddItems(order) {
+    state.addTarget = order;
+    $('addTitle').textContent = 'Add items · ' + order.no;
+    $('addSearch').value = '';
+    renderAddItems('');
+    $('addModal').classList.remove('hidden');
+    setTimeout(function () { $('addSearch').focus(); }, 50);
+  }
+
+  function renderAddItems(query) {
+    var q = String(query || '').trim().toLowerCase();
+    var list = state.menu.filter(function (item) {
+      return !q ||
+        item.name.toLowerCase().indexOf(q) !== -1 ||
+        item.station.toLowerCase().indexOf(q) !== -1;
+    });
+
+    var host = $('addList');
+    host.innerHTML = '';
+    if (!list.length) {
+      host.innerHTML = '<div class="empty">No items match "' + esc(query) + '"</div>';
+      return;
+    }
+    list.forEach(function (item) {
+      var row = document.createElement('div');
+      row.className = 'queue-row';
+      row.innerHTML =
+        '<span>' + esc(item.name) + ' <span class="hint">' + esc(item.category) + '</span></span>' +
+        '<span class="st">' + money(item.price) + '</span>' +
+        '<button class="btn small" data-add="1" title="Add to order">+</button>';
+      row.querySelector('[data-add]').addEventListener('click', function () { addToOrder(item); });
+      host.appendChild(row);
+    });
+  }
+
+  function addToOrder(item) {
+    var order = state.addTarget;
+    if (!order) return;
+    var existing = order.items.filter(function (line) { return line.name === item.name; })[0];
+    if (existing) existing.qty += 1;
+    else order.items.push({ name: item.name, qty: 1 });
+    saveOrders();
+    renderAll();
+    toast(item.name + ' added to ' + order.no, 'ok');
+  }
+
+  // -------------------------------------------------------------- payment
+
+  function openPayment(orderOrNull) {
+    if (orderOrNull) {
+      var t = orderTotals(orderOrNull);
+      state.pay = {
+        order: orderOrNull,
+        appendCart: false,
+        total: t.total,
+        method: 'cash',
+        tendered: t.total
+      };
+      $('payTitle').textContent = 'Charge ' + orderOrNull.no + ' · ' + money(t.total);
+    } else {
+      var c = cartTotals('cash');
+      if (!cartLines().length) { toast('Cart is empty'); return; }
+      // If this table already has an open bill, the cart joins it and the
+      // whole bill is settled on one receipt.
+      var bill = openTableOrder($('table').value);
+      var total = bill ? round2(orderTotals(bill).total + c.total) : c.total;
+      state.pay = {
+        order: bill,
+        appendCart: !!bill,
+        total: total,
+        method: 'cash',
+        tendered: total
+      };
+      $('payTitle').textContent = 'Charge ' + money(total) +
+        (bill ? ' · ' + bill.no + ' (whole bill)' : '');
+    }
+    setPaymentMethod('cash');
+    $('payModal').classList.remove('hidden');
+  }
+
+  function setPaymentMethod(method) {
+    if (!state.pay) return;
+    state.pay.method = method;
+    Array.prototype.forEach.call($('payMethods').children, function (b) {
+      b.classList.toggle('active', b.dataset.method === method);
+    });
+    var payable = state.pay.method === 'cash'
+      ? roundTo(state.pay.total, state.rounding)
+      : round2(state.pay.total);
+    state.pay.payable = payable;
+    $('tenderField').classList.toggle('hidden', method !== 'cash');
+    $('tendered').value = payable.toFixed(2);
+    updateChange();
+  }
+
+  function updateChange() {
+    var tendered = Number($('tendered').value) || 0;
+    var change = round2(tendered - state.pay.payable);
+    var el = $('changeText');
+    el.textContent = change >= 0 ? 'Change: ' + money(change) : 'Short by ' + money(-change);
+    el.className = 'change ' + (change >= 0 ? 'ok' : 'bad');
+    $('payConfirm').disabled = state.pay.method === 'cash' && change < -0.0001;
+  }
+
+  function confirmPayment() {
+    if (!state.pay) return;
+
+    if (!state.pay.order) {
+      var problem = tableProblem($('table').value);
+      if (problem) { toast(problem, 'err'); return; }
+    }
+
+    var tendered = state.pay.method === 'cash'
+      ? (Number($('tendered').value) || state.pay.payable)
+      : state.pay.payable;
+
+    // Merge the counter cart into the table's open bill first, so the whole
+    // table is settled on one receipt.
+    if (state.pay.order && state.pay.appendCart) {
+      appendCartToOrder(state.pay.order);
+      state.pay.appendCart = false;
+      state.cart = {};
+      $('note').value = '';
+    }
+
+    if (state.pay.order) {
+      state.pay.order.status = 'PAID';
+      state.pay.order.method = state.pay.method;
+      state.pay.order.tendered = tendered;
+      state.pay.order.change = round2(tendered - state.pay.payable);
+      state.pay.order.paidAt = Date.now();
+      saveOrders();
+      toast(state.pay.order.no + ' paid — receipt printing', 'ok');
+    } else {
+      var order = {
+        no: nextOrderNo($('table').value),
+        channel: 'counter',
+        status: 'PAID',
+        table: $('table').value.trim() || '—',
+        server: $('server').value.trim() || 'Cashier',
+        orderType: state.orderType,
+        method: state.pay.method,
+        tendered: tendered,
+        change: round2(tendered - state.pay.payable),
+        paidAt: Date.now(),
+        items: cartLines().map(function (l) { return { name: l.item.name, qty: l.qty }; })
+      };
+      state.orders.push(order);
+      saveOrders();
+      state.cart = {};
+      $('note').value = '';
+      toast(order.no + ' paid — receipt printing', 'ok');
+    }
+
+    state.pay = null;
+    $('payModal').classList.add('hidden');
+    renderAll();
+  }
+
+  /// The running dine-in bill for a table, if it has not been paid yet.
+  function openTableOrder(tableNo) {
+    if (state.orderType !== 'dine_in') return null;
+    var table = String(tableNo || '').trim();
+    if (!table) return null;
+    return state.orders.filter(function (o) {
+      return o.status === 'OPEN' &&
+        o.orderType !== 'take_away' &&
+        String(o.table).trim() === table;
+    })[0] || null;
+  }
+
+  function appendCartToOrder(order) {
+    cartLines().forEach(function (line) {
+      var match = order.items.filter(function (item) {
+        return item.name === line.item.name;
+      })[0];
+      if (match) match.qty += line.qty;
+      else order.items.push({ name: line.item.name, qty: line.qty });
+    });
+    saveOrders();
+  }
+
+  function sendToKitchen() {
+    var lines = cartLines();
+    if (!lines.length) { toast('Cart is empty'); return; }
+    var problem = tableProblem($('table').value);
+    if (problem) { toast(problem, 'err'); return; }
+
+    // Another round for a table with an open bill goes on the same bill.
+    var tableBill = openTableOrder($('table').value);
+    if (tableBill) {
+      appendCartToOrder(tableBill);
+      state.cart = {};
+      $('note').value = '';
+      renderAll();
+      toast('Added to ' + tableBill.no + ' (table ' + tableBill.table + ')', 'ok');
+      return;
+    }
+
+    var order = {
+      no: nextOrderNo($('table').value),
+      channel: 'counter',
+      status: 'OPEN',
+      table: $('table').value.trim() || '—',
+      server: $('server').value.trim() || 'Cashier',
+      orderType: state.orderType,
+      items: lines.map(function (l) { return { name: l.item.name, qty: l.qty }; })
+    };
+    state.orders.push(order);
+    saveOrders();
+    state.cart = {};
+    $('note').value = '';
+    toast('Sent to kitchen — ' + order.no, 'ok');
+    renderAll();
+  }
+
+  // ------------------------------------------------------------------ tabs
+
+  function showTab(tab) {
+    state.tab = tab;
+    ['counter', 'orders', 'history', 'settings', 'queue'].forEach(function (name) {
+      var section = $('tab-' + name);
+      if (section) section.classList.toggle('hidden', name !== tab);
+    });
+    ['counter', 'orders', 'history', 'queue'].forEach(function (name) {
+      var btn = $('tabBtn-' + name);
+      if (btn) btn.classList.toggle('active', name === tab);
+    });
+  }
+
+  // ----------------------------------------------------------------- boot
+
+  function bind() {
+    $('tabBtn-counter').addEventListener('click', function () { showTab('counter'); });
+    $('tabBtn-orders').addEventListener('click', function () { showTab('orders'); });
+    $('tabBtn-history').addEventListener('click', function () { showTab('history'); });
+    $('tabBtn-queue').addEventListener('click', function () { showTab('queue'); });
+
+    $('menuSearch').addEventListener('input', function (e) {
+      state.query = e.target.value;
+      $('menuSearchClear').classList.toggle('hidden', !state.query);
+      renderMenuArea();
+    });
+    $('menuSearchClear').addEventListener('click', function () {
+      state.query = '';
+      $('menuSearch').value = '';
+      $('menuSearchClear').classList.add('hidden');
+      renderMenuArea();
+      $('menuSearch').focus();
+    });
+
+    $('charge').addEventListener('click', function () { openPayment(null); });
+    $('sendKitchen').addEventListener('click', sendToKitchen);
+
+    Array.prototype.forEach.call($('typeSeg').children, function (button) {
+      button.addEventListener('click', function () {
+        state.orderType = button.getAttribute('data-type');
+        Array.prototype.forEach.call($('typeSeg').children, function (other) {
+          other.classList.toggle('active', other === button);
+        });
+        applyOrderType();
+      });
+    });
+    applyOrderType();
+    $('clearCart').addEventListener('click', function () {
+      state.cart = {}; $('note').value = ''; renderAll();
+    });
+
+    Array.prototype.forEach.call($('payMethods').children, function (b) {
+      b.addEventListener('click', function () { setPaymentMethod(b.dataset.method); });
+    });
+    $('tendered').addEventListener('input', updateChange);
+    $('payCancel').addEventListener('click', function () {
+      state.pay = null;
+      $('payModal').classList.add('hidden');
+    });
+    $('payConfirm').addEventListener('click', confirmPayment);
+
+    // Settings (which now holds the hub controls) is reached from the gear.
+    $('gear').addEventListener('click', function () {
+      showTab(state.tab === 'settings' ? 'counter' : 'settings');
+    });
+    $('histSearch').addEventListener('input', renderHistory);
+    $('receiptClose').addEventListener('click', function () {
+      $('receiptModal').classList.add('hidden');
+    });
+    $('receiptPrint').addEventListener('click', function () {
+      toast('Receipt queued to CASHIER printer', 'ok');
+    });
+    $('addSearch').addEventListener('input', function (event) {
+      renderAddItems(event.target.value);
+    });
+    $('addClose').addEventListener('click', function () {
+      state.addTarget = null;
+      $('addModal').classList.add('hidden');
+    });
+    $('setSave').addEventListener('click', function () {
+      var settings = {
+        name: $('setName').value, tax: $('setTax').value,
+        round: $('setRound').value, portal: $('setPortal').value
+      };
+      writeJSON(LS.settings, settings);
+      state.taxRate = (Number(settings.tax) || 10) / 100;
+      state.rounding = Number(settings.round) || 0.05;
+      localStorage.setItem(LS.menu, settings.portal || '/api/export?format=grouped');
+      toast('Settings saved', 'ok');
+      renderAll();
+    });
+
+    $('hubToggle').addEventListener('click', function () {
+      var running = $('serverStatus').textContent.indexOf('running') !== -1;
+      $('serverStatus').textContent = running ? 'server stopped' : 'server running · :8080';
+      $('hubToggle').textContent = running ? 'Start Server' : 'Stop Server';
+      toast(running ? 'Server stopped' : 'Server started');
+    });
+    $('hubSync').addEventListener('click', loadMenu);
+    $('queueRetry').addEventListener('click', function () {
+      var failed = MOCK_QUEUE.filter(function (q) { return q.status === 'FAILED'; });
+      if (!failed.length) { toast('No failed jobs'); return; }
+      MOCK_QUEUE = MOCK_QUEUE.map(function (q) {
+        return q.status === 'FAILED' ? Object.assign({}, q, { status: 'DONE' }) : q;
+      });
+      renderQueue();
+      toast('Retried ' + failed.length + ' job(s)');
+    });
+    $('queueClear').addEventListener('click', function () {
+      MOCK_QUEUE = [];
+      renderQueue();
+      toast('Queue cleared');
+    });
+
+    $('table').value = localStorage.getItem(LS.table) || '';
+    $('table').addEventListener('input', function () { localStorage.setItem(LS.table, $('table').value); });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!$('addModal').classList.contains('hidden')) {
+        state.addTarget = null;
+        $('addModal').classList.add('hidden');
+        return;
+      }
+      if (!$('receiptModal').classList.contains('hidden')) {
+        $('receiptModal').classList.add('hidden');
+        return;
+      }
+      if (!$('payModal').classList.contains('hidden')) {
+        state.pay = null;
+        $('payModal').classList.add('hidden');
+      }
+    });
+  }
+
+  // hub panels
+  var MOCK_QUEUE = [
+    { id: 43, station: 'Beverage', status: 'PENDING', kind: 'ticket' },
+    { id: 42, station: 'Cashier', status: 'PRINTING', kind: 'receipt' },
+    { id: 41, station: 'Kitchen', status: 'DONE', kind: 'ticket' },
+    { id: 40, station: 'Griddle', status: 'DONE', kind: 'ticket' },
+    { id: 39, station: 'Wok', status: 'FAILED', kind: 'ticket' }
+  ];
+
+  function renderQueue() {
+    var pending = MOCK_QUEUE.filter(function (q) { return q.status === 'PENDING'; }).length;
+    var failed = MOCK_QUEUE.filter(function (q) { return q.status === 'FAILED'; }).length;
+
+    $('queueSummary').textContent =
+      'pending ' + pending + ' · failed ' + failed + ' · total ' + MOCK_QUEUE.length;
+    $('queueBadge').textContent = pending;
+
+    var host = $('queue');
+    if (!MOCK_QUEUE.length) {
+      host.innerHTML = '<div class="empty">Queue is empty</div>';
+      return;
+    }
+    host.innerHTML = MOCK_QUEUE.map(function (q) {
+      return '<div class="queue-row"><span class="sid">#' + q.id + '</span>' +
+        '<span>' + esc(q.station) + ' · ' +
+        (q.kind === 'receipt' ? 'receipt' : 'ticket') + '</span>' +
+        '<span class="st ' + q.status + '">' + q.status + '</span>' +
+        (q.status === 'FAILED' || q.status === 'PENDING'
+          ? '<button class="btn small secondary" data-retry="' + q.id + '">Retry</button>'
+          : '') +
+        '</div>';
+    }).join('');
+
+    Array.prototype.forEach.call(host.querySelectorAll('[data-retry]'), function (button) {
+      button.addEventListener('click', function () {
+        var id = Number(button.getAttribute('data-retry'));
+        MOCK_QUEUE = MOCK_QUEUE.map(function (q) {
+          return q.id === id ? Object.assign({}, q, { status: 'DONE' }) : q;
+        });
+        renderQueue();
+        toast('Retrying #' + id);
+      });
+    });
+  }
+
+  function renderHub() {
+    $('hubMenu').textContent = state.menu.length
+      ? state.menu.length + ' item(s) · ' + groups().length + ' groups'
+      : 'empty — sync from the portal';
+    var printers = ['MPT-II · A1:B2:C3:D4:E5:F6', 'MPT-58 · 11:22:33:44:55:66',
+      'MPT-58 · 12:34:56:78:9A:BC'];
+    $('printers').innerHTML = printers.map(function (p) {
+      return '<div class="queue-row"><span class="sid">&#9679;</span><span>' + esc(p) + '</span>' +
+        '<span class="st DONE">paired</span></div>';
+    }).join('');
+    renderQueue();
+  }
+
+  var savedSettings = readJSON(LS.settings, null);
+  if (savedSettings) {
+    $('setName').value = savedSettings.name || 'Warong Pak Jabit';
+    $('setTax').value = savedSettings.tax || '10';
+    $('setRound').value = savedSettings.round || '0.05';
+    $('setPortal').value = savedSettings.portal || '';
+    state.taxRate = (Number(savedSettings.tax) || 10) / 100;
+    state.rounding = Number(savedSettings.round) || 0.05;
+  } else {
+    $('setName').value = 'Warong Pak Jabit';
+    $('setTax').value = '10';
+    $('setRound').value = '0.05';
+    $('setPortal').value = '/api/export?format=grouped';
+  }
+
+  bind();
+  state.favs = readJSON(LS.favs, null) || DEFAULT_FAVS.slice();
+  state.activeGroup = localStorage.getItem(LS.group) || '';
+  loadOrders();
+  renderHub();
+  renderAll();
+  loadMenu();
+})();
+</script>
+</body>
+</html>
