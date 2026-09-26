@@ -10,6 +10,10 @@ class Product {
   /// Group colour (hex, e.g. `#1565C0`) inherited from the portal's group.
   final String color;
 
+  /// Position in the portal feed. Preserves the portal's group order (and the
+  /// order of items within a group) instead of falling back to alphabetical.
+  final int sortOrder;
+
   const Product({
     required this.sku,
     required this.name,
@@ -18,6 +22,7 @@ class Product {
     required this.category,
     required this.available,
     this.color = '',
+    this.sortOrder = 0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -28,6 +33,7 @@ class Product {
         'category': category,
         'available': available ? 1 : 0,
         'color': color,
+        'sort_order': sortOrder,
       };
 
   factory Product.fromMap(Map<String, dynamic> map) => Product(
@@ -38,5 +44,17 @@ class Product {
         category: map['category'] as String? ?? '',
         available: map['available'] == 1 || map['available'] == true,
         color: map['color'] as String? ?? '',
+        sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
+      );
+
+  Product withSortOrder(int order) => Product(
+        sku: sku,
+        name: name,
+        price: price,
+        station: station,
+        category: category,
+        available: available,
+        color: color,
+        sortOrder: order,
       );
 }

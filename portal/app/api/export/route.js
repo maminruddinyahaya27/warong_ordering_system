@@ -87,6 +87,48 @@ async function getExport(request) {
   const colorByName = groupColorMap(groups);
   const stationByName = groupStationMap(groups);
 
+  // The portal's group order is the order the apps should show. Rank items by
+  // their group, then by the item's own sort order, so a feed consumer that
+  // simply groups by first appearance gets the right category chips.
+  const groupRank = new Map(groups.map((group, index) => [group.name, index]));
+  const ungroupedRank = groups.length;
+  const rankOf = (item) => {
+    const key = item.groupName || UNGROUPED_LABEL;
+    return groupRank.has(key) ? groupRank.get(key) : ungroupedRank;
+  };
+  const orderedItems = [...items].sort((a, b) => {
+    const rankA = rankOf(a);
+    const rankB = rankOf(b);
+    if (rankA !== rankB) return rankA - rankB;
+    const orderA = Number.isFinite(a.sortOrder) ? a.sortOrder : 0;
+    const orderB = Number.isFinite(b.sortOrder) ? b.sortOrder : 0;
+    if (orderA !== orderB) return orderA - orderB;
+    return String(a.name).localeCompare(String(b.name));
+  });
+
+  // Group list in display order, with item counts, so apps can render the
+  // category bar directly instead of re-deriving (and mis-sorting) it.
+  const counts = new Map();
+  for (const item of orderedItems) {
+    const key = item.groupName || UNGROUPED_LABEL;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const groupList = groups.map((group) => ({
+    name: group.name,
+    color: group.color || '',
+    station: group.station || '',
+    count: counts.get(group.name) || 0,
+  }));
+  const ungroupedCount = counts.get(UNGROUPED_LABEL) || 0;
+  if (ungroupedCount > 0) {
+    groupList.push({
+      name: UNGROUPED_LABEL,
+      color: '',
+      station: '',
+      count: ungroupedCount,
+    });
+  }
+
   if (format === 'grouped') {
     const buckets = new Map();
     for (const menuGroup of groups) {
@@ -94,7 +136,7 @@ async function getExport(request) {
     }
     buckets.set(UNGROUPED_LABEL, []);
 
-    for (const item of items) {
+    for (const item of orderedItems) {
       const key = item.groupName || UNGROUPED_LABEL;
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(toArrayEntry(item, colorByName, stationByName));
@@ -110,7 +152,7 @@ async function getExport(request) {
       }));
   } else if (format === 'object') {
     payload = {};
-    for (const item of items) {
+    for (const item of orderedItems) {
       const group = item.groupName || UNGROUPED_LABEL;
       const entry = {
         price: item.price,
@@ -123,7 +165,9 @@ async function getExport(request) {
       payload[item.name] = entry;
     }
   } else {
-    payload = items.map((item) => toArrayEntry(item, colorByName, stationByName));
+    payload = orderedItems.map((item) =>
+      toArrayEntry(item, colorByName, stationByName)
+    );
   }
 
   const body = JSON.stringify(
@@ -135,6 +179,8 @@ async function getExport(request) {
       // The station list itself, so the POS Hub maps the same stations the
       // portal manages — including ones with no items yet.
       stations: stations.map((entry) => entry.name),
+      // Groups in the portal's display order (name, colour, station, count).
+      groups: groupList,
       menu: payload,
     },
     null,

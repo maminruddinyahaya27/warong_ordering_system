@@ -9,7 +9,7 @@ class PrintQueueDb {
   static final PrintQueueDb instance = PrintQueueDb._internal();
   PrintQueueDb._internal();
 
-  static const int _version = 10;
+  static const int _version = 11;
 
   Database? _db;
 
@@ -78,6 +78,10 @@ class PrintQueueDb {
             "ALTER TABLE orders ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''");
         await _createProcessedRequests(db);
       }
+      if (oldV < 11) {
+        await db.execute(
+            'ALTER TABLE products ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+      }
     });
   }
 
@@ -116,6 +120,7 @@ class PrintQueueDb {
         category TEXT,
         available INTEGER,
         color TEXT,
+        sort_order INTEGER,
         updated_at INTEGER
       )
     ''');
@@ -359,6 +364,7 @@ class PrintQueueDb {
           'category': p.category,
           'available': p.available ? 1 : 0,
           'color': p.color,
+          'sort_order': p.sortOrder,
           'updated_at': now,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
@@ -371,7 +377,9 @@ class PrintQueueDb {
     final rows = await db.query(
       'products',
       where: availableOnly ? 'available = 1' : null,
-      orderBy: 'category ASC, name ASC',
+      // The portal's feed order, so groups and items appear exactly as arranged
+      // in the portal (category/name as a fallback for pre-v11 rows).
+      orderBy: 'sort_order ASC, category ASC, name ASC',
     );
     return rows.map(Product.fromMap).toList();
   }

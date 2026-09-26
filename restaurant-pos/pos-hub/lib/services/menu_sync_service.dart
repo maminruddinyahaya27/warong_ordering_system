@@ -114,7 +114,13 @@ class MenuSyncService {
       });
     }
 
-    await _db.replaceProducts(products);
+    // Keep the portal's feed order: it carries the group order the portal admin
+    // arranged, plus the item order inside each group.
+    final ordered = [
+      for (var index = 0; index < products.length; index++)
+        products[index].withSortOrder(index),
+    ];
+    await _db.replaceProducts(ordered);
 
     // The portal's station list drives the hub's station -> printer mapping.
     final stationList = decoded['stations'];

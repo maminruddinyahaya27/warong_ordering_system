@@ -8,7 +8,9 @@ out/
 # Environment variables
 .env
 .env.local
+.env.vercel
 .env.production
+.env.production.local
 .env.development
 
 # Logs

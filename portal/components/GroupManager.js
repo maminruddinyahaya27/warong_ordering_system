@@ -141,6 +141,30 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
     }
   }
 
+  async function moveGroup(index, delta) {
+    const target = index + delta;
+    if (target < 0 || target >= groups.length) return;
+
+    const ids = groups.map((group) => group.id);
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+
+    setBusy('order');
+    setError('');
+    setNotice('');
+    try {
+      await request('/api/groups/reorder', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      });
+      setNotice('Group order saved — the apps will show it after the next menu sync.');
+      router.refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
   return (
     <div className="stack">
       {error ? <div className="notice notice-error">{error}</div> : null}
@@ -165,6 +189,7 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
               <table className="data">
                 <thead>
                   <tr>
+                    <th style={{ width: 110 }}>Order</th>
                     <th>Group</th>
                     <th>Description</th>
                     <th>Colour</th>
@@ -175,13 +200,41 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((group) => {
+                  {groups.map((group, index) => {
                     const draft = draftFor(group);
                     const dirty = isDirty(group);
                     const rowBusy = busy === group.id;
 
                     return (
                       <tr key={group.id}>
+                        <td>
+                          <div
+                            className="inline"
+                            style={{ flexWrap: 'nowrap', alignItems: 'center' }}
+                          >
+                            <span className="badge">{index + 1}</span>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              disabled={busy === 'order' || index === 0}
+                              onClick={() => moveGroup(index, -1)}
+                              aria-label={`Move ${group.name} up`}
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              disabled={
+                                busy === 'order' || index === groups.length - 1
+                              }
+                              onClick={() => moveGroup(index, 1)}
+                              aria-label={`Move ${group.name} down`}
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        </td>
                         <td>
                           <input
                             type="text"
