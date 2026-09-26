@@ -489,21 +489,23 @@
   function groupItems(items) {
     var map = {};
     var colors = {};
+    var order = [];
     items.forEach(function (item) {
       var key = (item.category || 'Others').trim() || 'Others';
-      (map[key] = map[key] || []).push(item);
+      if (!map[key]) { map[key] = []; order.push(key); }
+      map[key].push(item);
       if (!colors[key] && item.color) colors[key] = item.color;
     });
-    return Object.keys(map)
-      .sort(function (a, b) {
-        var au = isUngrouped(a);
-        var bu = isUngrouped(b);
-        if (au !== bu) return au ? 1 : -1;
-        return a.localeCompare(b);
-      })
-      .map(function (name) {
-        return { name: name, items: map[name], color: colors[name] || '' };
-      });
+    // Keep the portal's own group order (first appearance), ungrouped last.
+    order.sort(function (a, b) {
+      var au = isUngrouped(a);
+      var bu = isUngrouped(b);
+      if (au !== bu) return au ? 1 : -1;
+      return 0;
+    });
+    return order.map(function (name) {
+      return { name: name, items: map[name], color: colors[name] || '' };
+    });
   }
 
   function renderMenu() {
