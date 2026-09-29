@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 class PaymentResult {
+  /// The amount entered: the cash received for cash, otherwise the amount to
+  /// collect now. It may be less than the balance — that is a part payment.
+  final double amount;
   final String method;
-  final double tendered;
-  const PaymentResult(this.method, this.tendered);
+  const PaymentResult(this.method, this.amount);
 }
 
 /// Cash / card / e-wallet tender dialog. Returns null if cancelled.
@@ -47,31 +49,36 @@ class _PaymentDialog extends StatefulWidget {
 
 class _PaymentDialogState extends State<_PaymentDialog> {
   String _method = 'cash';
-  late final TextEditingController _tendered;
+  late final TextEditingController _amount;
 
   @override
   void initState() {
     super.initState();
-    _tendered = TextEditingController(text: widget.total.toStringAsFixed(2));
+    _amount = TextEditingController(text: widget.total.toStringAsFixed(2));
   }
 
   @override
   void dispose() {
-    _tendered.dispose();
+    _amount.dispose();
     super.dispose();
   }
 
   void _confirm() {
-    final tendered = double.tryParse(_tendered.text.trim()) ?? 0;
-    Navigator.pop(context, PaymentResult(_method, tendered));
+    final amount = double.tryParse(_amount.text.trim()) ?? 0;
+    Navigator.pop(context, PaymentResult(_method, amount));
   }
 
   @override
   Widget build(BuildContext context) {
     final isCash = _method == 'cash';
     final payable = widget.payableFor?.call(_method) ?? widget.total;
-    final tendered = double.tryParse(_tendered.text.trim()) ?? 0;
-    final change = tendered - payable;
+    final entered = double.tryParse(_amount.text.trim()) ?? 0;
+    // Cash can be over-tendered (change given); card/e-wallet cannot.
+    final collected = isCash ? (entered < payable ? entered : payable) : entered;
+    final change = isCash && entered > payable ? entered - payable : 0.0;
+    final overCard = !isCash && entered > payable + 0.0001;
+    final balanceAfter = payable - collected;
+    final valid = entered > 0 && !overCard;
 
     return AlertDialog(
       title: Text(widget.title ??
@@ -91,28 +98,43 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                 setState(() => _method = selection.first),
           ),
           const SizedBox(height: 16),
-          if (isCash) ...[
-            TextField(
-              controller: _tendered,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Tendered',
-                prefixText: '${widget.currency} ',
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
+          TextField(
+            controller: _amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: isCash ? 'Cash received' : 'Amount to pay',
+              prefixText: '${widget.currency} ',
+              border: const OutlineInputBorder(),
+              helperText: 'Enter less for a part payment',
             ),
-            const SizedBox(height: 8),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Paying now: ${widget.currency}${collected.toStringAsFixed(2)}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          if (balanceAfter > 0.0001)
             Text(
-              change >= 0
-                  ? 'Change: ${widget.currency}${change.toStringAsFixed(2)}'
-                  : 'Short by ${widget.currency}${(-change).toStringAsFixed(2)}',
+              'Balance left: ${widget.currency}${balanceAfter.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          if (change > 0)
+            Text(
+              'Change: ${widget.currency}${change.toStringAsFixed(2)}',
               style: TextStyle(
-                color: change >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                color: Colors.green.shade700,
                 fontWeight: FontWeight.w600,
               ),
             ),
-          ],
+          if (overCard)
+            Text(
+              'Card / e-wallet cannot be more than the balance',
+              style: TextStyle(
+                color: Colors.red.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
         ],
       ),
       actions: [
@@ -121,7 +143,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: (!isCash || change >= -0.0001) ? _confirm : null,
+          onPressed: valid ? _confirm : null,
           child: const Text('Confirm'),
         ),
       ],

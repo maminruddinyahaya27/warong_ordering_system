@@ -14,10 +14,6 @@ const MenuGroupSchema = new mongoose.Schema(
     // Station this group's items are printed at. When set it overrides each
     // item's own station, so the hub only needs station -> printer mapping.
     station: { type: String, default: '', trim: true },
-    // Groups whose items are add-ons for this group: e.g. Roti Canai lists
-    // Lauk-pauk, so a curry ordered with a roti prints on the roti's station.
-    // A group may have several add-on groups.
-    addOns: { type: [String], default: [] },
     sortOrder: { type: Number, default: 0 },
   },
   { timestamps: true, collection: 'menu_groups' }

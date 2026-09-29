@@ -20,6 +20,11 @@ const MenuItemSchema = new mongoose.Schema(
     },
     groupName: { type: String, default: '', trim: true, index: true },
     options: { type: String, default: '', trim: true },
+    // Parent groups this item is an add-on for: when one of them is on the same
+    // order, this item prints on that group's station (e.g. Kari Kambing with a
+    // Roti Canai prints at the griddle; Sambal Sardin is left empty and stays
+    // in the kitchen).
+    addOnFor: { type: [String], default: [] },
     description: { type: String, default: '', trim: true },
     available: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },

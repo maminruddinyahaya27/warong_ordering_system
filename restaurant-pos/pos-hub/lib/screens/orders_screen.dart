@@ -3,11 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/order.dart';
-import '../models/product.dart';
 import '../services/app_events.dart';
 import '../services/app_settings.dart';
 import '../services/cashier_service.dart';
 import '../services/print_queue_db.dart';
+import '../widgets/charge_mode_dialog.dart';
+import '../widgets/partial_picker.dart';
 import '../widgets/receipt_prompt.dart';
 import '../widgets/settle_order.dart';
 
@@ -67,18 +68,61 @@ class _OrdersScreenState extends State<OrdersScreen> {
   String get _money => _settings.currency;
 
   Future<void> _pay(Order order) async {
-    final settled = await settleOrder(context, order);
-    if (settled == null) return;
+    // Full bill, or the items the customer is paying for now.
+    final mode = await showChargeModeDialog(
+      context,
+      title: 'Charge ${order.orderNo} · '
+          '$_money${order.balance.toStringAsFixed(2)}',
+    );
+    if (!mounted || mode == null) return;
+
+    double? partial;
+    var partialIds = const <int>[];
+    if (mode == 'partial') {
+      final products = await _db.getProducts();
+      if (!mounted) return;
+      final picked = await showPartialPicker(
+        context,
+        order: order,
+        products: products,
+        currency: _settings.currency,
+      );
+      if (!mounted || picked == null || picked.amount <= 0) return;
+      partial = picked.amount;
+      partialIds = picked.itemIds;
+    }
+
+    final settled = await settleOrder(context, order, firstAmount: partial);
+    if (settled == null || !mounted) return;
     AppEvents.ordersChanged();
+
+    // Always offer the receipt — including after a part payment, where the
+    // printed receipt is the record of what was paid this round.
+    final print = await askPrintReceipt(context, settled.orderNo);
+
+    // Lines are only flagged as paid once the receipt actually prints, so an
+    // abandoned flow leaves the picker untouched.
+    if (print) {
+      if (partialIds.isNotEmpty && partial != null) {
+        // Part payment: the receipt covers only the items paid this round.
+        await _cashier.printPartialReceipt(order, partialIds, partial);
+      } else {
+        await _cashier.reprintReceipt(settled);
+      }
+      if (order.id != null) {
+        if (partialIds.isNotEmpty) {
+          await _db.markOrderItemsPaid(order.id!, partialIds);
+        } else {
+          await _db.markAllOrderItemsPaid(order.id!);
+        }
+      }
+    }
+
     if (!mounted) return;
     if (!settled.isSettled) {
       _snack('${settled.orderNo} part-paid — balance '
           '$_money${settled.balance.toStringAsFixed(2)}');
       return;
-    }
-    final print = await askPrintReceipt(context, settled.orderNo);
-    if (print) {
-      await _cashier.reprintReceipt(settled);
     }
     _snack('${settled.orderNo} closed');
   }
@@ -261,14 +305,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     ],
                     if (editable) ...[
                       const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () => _showAddItems(current, (updated) {
-                          setSheetState(() => current = updated);
-                          AppEvents.ordersChanged();
-                        }),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add items to this order'),
-                      ),
                     ],
                     const SizedBox(height: 16),
                     Wrap(
@@ -293,11 +329,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             label: const Text('Void'),
                           ),
                         ],
-                        OutlinedButton.icon(
-                          onPressed: () => _reprintReceipt(current),
-                          icon: const Icon(Icons.receipt_long),
-                          label: const Text('Receipt'),
-                        ),
+                        // A receipt is only meaningful once the bill is closed.
+                        if (current.isSettled)
+                          OutlinedButton.icon(
+                            onPressed: () => _reprintReceipt(current),
+                            icon: const Icon(Icons.receipt_long),
+                            label: const Text('Receipt'),
+                          ),
                         OutlinedButton.icon(
                           onPressed: () => _resendTickets(current),
                           icon: const Icon(Icons.print),
@@ -315,44 +353,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
-  Future<void> _showAddItems(
-    Order order,
-    void Function(Order) onUpdated,
-  ) async {
-    final products = await _db.getProducts(availableOnly: true);
-    if (!mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.8,
-        maxChildSize: 0.95,
-        builder: (context, controller) => _AddItemsSheet(
-          products: products,
-          currency: _settings.currency,
-          scrollController: controller,
-          onAdd: (product) async {
-            final updated = await _cashier.addOrderItems(order.id!, [
-              OrderItem(
-                sku: product.sku,
-                name: product.name,
-                qty: 1,
-                unitPrice: product.price,
-                lineTotal: product.price,
-                station: product.station,
-              ),
-            ]);
-            onUpdated(updated);
-            _snack('${product.name} added to ${updated.orderNo}');
-          },
-          onError: (message) => _snack(message),
-        ),
-      ),
-    );
-  }
-
   Widget _orderLine(
     OrderItem item, {
     required bool editable,
@@ -363,8 +363,20 @@ class _OrdersScreenState extends State<OrdersScreen> {
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
-      title: Text(item.name),
-      subtitle: Text(item.station),
+      // A line covered by a part payment is struck through.
+      title: Text(
+        item.name,
+        style: item.paid
+            ? const TextStyle(
+                decoration: TextDecoration.lineThrough,
+                color: Colors.grey,
+              )
+            : null,
+      ),
+      subtitle: Text(
+        item.paid ? '${item.station} · paid' : item.station,
+        style: item.paid ? const TextStyle(color: Colors.grey) : null,
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -519,175 +531,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 )),
         ],
       ),
-    );
-  }
-}
-
-/// Searchable catalogue picker used to append items to an open order.
-class _AddItemsSheet extends StatefulWidget {
-  const _AddItemsSheet({
-    required this.products,
-    required this.currency,
-    required this.scrollController,
-    required this.onAdd,
-    required this.onError,
-  });
-
-  final List<Product> products;
-  final String currency;
-  final ScrollController scrollController;
-  final Future<void> Function(Product product) onAdd;
-  final void Function(String message) onError;
-
-  @override
-  State<_AddItemsSheet> createState() => _AddItemsSheetState();
-}
-
-class _AddItemsSheetState extends State<_AddItemsSheet> {
-  final TextEditingController _search = TextEditingController();
-  String _query = '';
-  String _category = 'ALL';
-  String? _busySku;
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  List<String> get _categories {
-    final set = <String>{};
-    for (final product in widget.products) {
-      if (product.category.isNotEmpty) set.add(product.category);
-    }
-    final list = set.toList()..sort();
-    return ['ALL', ...list];
-  }
-
-  List<Product> get _filtered {
-    final query = _query.trim().toLowerCase();
-    return widget.products.where((product) {
-      if (_category != 'ALL' && product.category != _category) return false;
-      if (query.isEmpty) return true;
-      return product.name.toLowerCase().contains(query) ||
-          product.station.toLowerCase().contains(query);
-    }).toList();
-  }
-
-  Future<void> _add(Product product) async {
-    setState(() => _busySku = product.sku);
-    try {
-      await widget.onAdd(product);
-    } catch (error) {
-      widget.onError(error.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _busySku = null);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final products = _filtered;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            children: [
-              const Text('Add items',
-                  style:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
-              Text('${products.length}',
-                  style: const TextStyle(color: Colors.grey)),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Close',
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
-            controller: _search,
-            autofocus: true,
-            onChanged: (value) => setState(() => _query = value),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search, size: 20),
-              hintText: 'Search the catalogue',
-              isDense: true,
-              border: const OutlineInputBorder(),
-              suffixIcon: _query.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () {
-                        _search.clear();
-                        setState(() => _query = '');
-                      },
-                    ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: _categories.map((category) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(category),
-                  selected: _category == category,
-                  onSelected: (_) => setState(() => _category = category),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Expanded(
-          child: products.isEmpty
-              ? const Center(child: Text('No items match'))
-              : ListView.builder(
-                  controller: widget.scrollController,
-                  itemCount: products.length,
-                  itemBuilder: (context, index) {
-                    final product = products[index];
-                    final busy = _busySku == product.sku;
-                    return ListTile(
-                      dense: true,
-                      title: Text(product.name),
-                      subtitle: Text(product.category),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                              '${widget.currency}${product.price.toStringAsFixed(2)}'),
-                          const SizedBox(width: 8),
-                          busy
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : IconButton(
-                                  tooltip: 'Add to order',
-                                  icon: const Icon(Icons.add_circle),
-                                  onPressed: () => _add(product),
-                                ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
     );
   }
 }

@@ -2,14 +2,20 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const SWEETNESS_LEVELS = ['Normal', 'Less sugar', 'No sugar'];
+const SUGAR_LEVELS = ['Normal sugar', 'Less sugar', 'No sugar'];
+const ICE_LEVELS = ['Normal ice', 'Less ice', 'No ice'];
 
 function isDrink(item) {
   return (item?.options || '').toLowerCase().includes('drink');
 }
 
-function lineId(sku, sweetness) {
-  return `${sku}::${sweetness || ''}`;
+let lineSequence = 0;
+
+/// Every line gets its own id: an item ordered with add-ons must stay separate
+/// from another identical item, so each keeps its own add-ons on the ticket.
+function newLineId(sku, note) {
+  lineSequence += 1;
+  return `${sku}::${note}::${lineSequence}`;
 }
 
 export default function CustomerOrder({ tenantRef, tableToken }) {
@@ -17,13 +23,13 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeGroup, setActiveGroup] = useState('');
-  // Cart lines: the same item can appear several times when the sweetness
-  // differs (e.g. one Teh O "Less sugar" and one "Normal").
+  // Cart lines: the same item can appear several times when the drink options
+  // differ (e.g. one Teh O "Less sugar, Normal ice" and one all-normal).
   const [cart, setCart] = useState([]);
-  const [sweetness, setSweetness] = useState({});
+  const [drinkOptions, setDrinkOptions] = useState({});
   const [note, setNote] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
-  const [addOnFor, setAddOnFor] = useState(null);
+  const [bundle, setBundle] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState(null);
 
@@ -52,59 +58,93 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
   }, [tenantRef, tableToken]);
 
   const currency = data?.currency || 'RM';
-
   const itemCount = cart.reduce((sum, line) => sum + line.qty, 0);
-  const total = cart.reduce(
-    (sum, line) => sum + line.qty * line.item.price,
-    0
-  );
+  const total = cart.reduce((sum, line) => sum + line.qty * line.item.price, 0);
   const items = useMemo(
     () => (data?.menu || []).filter((item) => item.group === activeGroup),
     [data, activeGroup]
   );
-  const groupAddOns = useMemo(() => {
-    const map = {};
-    for (const group of data?.groups || []) {
-      map[group.name] = group.addOns || [];
-    }
-    return map;
-  }, [data]);
 
-  function currentSweetness(sku) {
-    return sweetness[sku] || 'Normal';
+  function optionsFor(sku) {
+    return drinkOptions[sku] || {};
   }
 
-  /// Total units of an item across all cart lines (shown under the Add button).
-  function qtyForSku(sku) {
-    return cart.reduce(
-      (sum, line) => sum + (line.item.sku === sku ? line.qty : 0),
-      0
+  function optionHas(item, tag) {
+    return (item?.options || '')
+      .toLowerCase()
+      .split(',')
+      .includes(tag);
+  }
+
+  function sugarOf(source) {
+    return source?.sugar || SUGAR_LEVELS[0];
+  }
+
+  function iceOf(source) {
+    return source?.ice || ICE_LEVELS[0];
+  }
+
+  /// The note printed for a drink: only the levels this item asks for, so a hot
+  /// drink (drink,sugar) never mentions ice.
+  function drinkNote(item, source) {
+    return [
+      optionHas(item, 'sugar') ? sugarOf(source) : null,
+      optionHas(item, 'ice') ? iceOf(source) : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  function lineNote(line) {
+    return isDrink(line.item) ? drinkNote(line.item, line) : '';
+  }
+
+  /// Menu items that are add-ons for the given item's group.
+  function addOnOptionsFor(parent) {
+    return (data?.menu || []).filter((entry) =>
+      (entry.addOnFor || []).includes(parent.group)
     );
   }
 
-  function removeLine(line) {
-    setCart((previous) => previous.filter((entry) => entry.id !== line.id));
+  /// Tapping an item with add-ons opens the bundle sheet: pick the quantity,
+  /// then any add-ons. Plain items are added straight away.
+  function startAdd(item) {
+    const options = addOnOptionsFor(item);
+    if (options.length === 0) {
+      add(item, 1);
+      return;
+    }
+    setBundle({ parent: item, options, parentQty: 1, qty: {} });
   }
 
-  /// Picks the sweetness that the Add button on the menu row will use.
-  function pickSweetness(item, level) {
-    setSweetness((previous) => ({ ...previous, [item.sku]: level }));
+  function confirmBundle() {
+    if (!bundle) return;
+    add(bundle.parent, bundle.parentQty, { merge: false });
+    for (const option of bundle.options) {
+      const qty = bundle.qty[option.sku] || 0;
+      if (qty > 0) add(option, qty, { merge: false });
+    }
+    setBundle(null);
   }
 
-  /// Adds (or removes) one unit for the item at its currently picked sweetness.
-  function add(item, delta) {
-    const level = isDrink(item) ? currentSweetness(item.sku) : '';
-    const id = lineId(item.sku, level);
+  function add(item, qty, { merge = true } = {}) {
+    const sugar = isDrink(item) ? sugarOf(optionsFor(item.sku)) : '';
+    const ice = isDrink(item) ? iceOf(optionsFor(item.sku)) : '';
+    const note = isDrink(item) ? drinkNote(item, { sugar, ice }) : '';
     setCart((previous) => {
-      const index = previous.findIndex((line) => line.id === id);
+      const index = merge
+        ? previous.findIndex(
+            (line) => line.item.sku === item.sku && lineNote(line) === note
+          )
+        : -1;
       if (index === -1) {
-        if (delta <= 0) return previous;
-        return [...previous, { id, item, qty: delta, sweetness: level }];
+        return [
+          ...previous,
+          { id: newLineId(item.sku, note), item, qty, sugar, ice },
+        ];
       }
       const next = [...previous];
-      const qty = next[index].qty + delta;
-      if (qty <= 0) next.splice(index, 1);
-      else next[index] = { ...next[index], qty };
+      next[index] = { ...next[index], qty: next[index].qty + qty };
       return next;
     });
   }
@@ -121,17 +161,25 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
     });
   }
 
-  /// Changes one line's sweetness, merging it with a sibling line that already
-  /// has that sweetness.
-  function changeLineSweetness(line, level) {
-    setSweetness((previous) => ({ ...previous, [line.item.sku]: level }));
+  function removeLine(line) {
+    setCart((previous) => previous.filter((entry) => entry.id !== line.id));
+  }
+
+  /// Changes one cart line's sugar/ice, merging with a sibling that ends up the
+  /// same (so two identical drinks stay one line).
+  function changeLineOption(line, kind, value) {
     setCart((previous) => {
       const index = previous.findIndex((entry) => entry.id === line.id);
       if (index === -1) return previous;
-      const mergedId = lineId(line.item.sku, level);
+      const sugar = kind === 'sugar' ? value : line.sugar;
+      const ice = kind === 'ice' ? value : line.ice;
+      const note = drinkNote(line.item, { sugar, ice });
       const next = [...previous];
       const sibling = next.findIndex(
-        (entry, position) => position !== index && entry.id === mergedId
+        (entry, position) =>
+          position !== index &&
+          entry.item.sku === line.item.sku &&
+          lineNote(entry) === note
       );
       if (sibling !== -1) {
         next[sibling] = {
@@ -140,38 +188,35 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
         };
         next.splice(index, 1);
       } else {
-        next[index] = { ...next[index], id: mergedId, sweetness: level };
+        next[index] = { ...next[index], sugar, ice };
       }
       return next;
     });
   }
 
-  /// Adds the tapped item, then offers its add-on groups (e.g. a Roti Canai
-  /// offers Lauk-pauk curries) in a popup. The add-ons print on the parent's
-  /// station, so the roti and its curry share one ticket.
-  function startAdd(item) {
-    add(item, 1);
-
-    const addOnGroups = groupAddOns[item.group] || [];
-    const options = (data?.menu || []).filter((entry) =>
-      addOnGroups.includes(entry.group)
-    );
-    if (options.length > 0) setAddOnFor({ parent: item, options });
-  }
-
-  function sweetnessChips(selected, onPick) {
-    return (
-      <div className="inline" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-        {SWEETNESS_LEVELS.map((level) => (
+  function optionChips(current, onChange, askSugar, askIce) {
+    if (!askSugar && !askIce) return null;
+    const row = (label, options, selected, kind) => (
+      <div className="inline" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <span className="muted small" style={{ minWidth: 42 }}>
+          {label}
+        </span>
+        {options.map((level) => (
           <button
             key={level}
             type="button"
             className={`btn btn-sm${selected === level ? ' btn-primary' : ''}`}
-            onClick={() => onPick(level)}
+            onClick={() => onChange(kind, level)}
           >
             {level}
           </button>
         ))}
+      </div>
+    );
+    return (
+      <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
+        {askSugar ? row('Sugar', SUGAR_LEVELS, sugarOf(current), 'sugar') : null}
+        {askIce ? row('Ice', ICE_LEVELS, iceOf(current), 'ice') : null}
       </div>
     );
   }
@@ -191,10 +236,7 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
           items: cart.map((line) => ({
             sku: line.item.sku,
             qty: line.qty,
-            note:
-              line.sweetness && line.sweetness !== 'Normal'
-                ? line.sweetness
-                : '',
+            note: lineNote(line),
           })),
         }),
       });
@@ -202,7 +244,7 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
       if (!response.ok) throw new Error(json.error || 'Could not send the order');
       setPlaced(json);
       setCart([]);
-      setSweetness({});
+      setDrinkOptions({});
       setNote('');
       setCartOpen(false);
     } catch (submitError) {
@@ -290,7 +332,9 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
           ) : (
             <div>
               {items.map((item) => {
-                const qty = qtyForSku(item.sku);
+                const qty = cart
+                  .filter((line) => line.item.sku === item.sku)
+                  .reduce((sum, line) => sum + line.qty, 0);
                 return (
                   <div
                     key={item.sku}
@@ -317,8 +361,18 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                         {Number(item.price).toFixed(2)}
                       </div>
                       {isDrink(item)
-                        ? sweetnessChips(currentSweetness(item.sku), (level) =>
-                            pickSweetness(item, level)
+                        ? optionChips(
+                            optionsFor(item.sku),
+                            (kind, value) =>
+                              setDrinkOptions((previous) => ({
+                                ...previous,
+                                [item.sku]: {
+                                  ...previous[item.sku],
+                                  [kind]: value,
+                                },
+                              })),
+                            optionHas(item, 'sugar'),
+                            optionHas(item, 'ice')
                           )
                         : null}
                     </div>
@@ -460,8 +514,12 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                         {Number(line.item.price).toFixed(2)} each
                       </div>
                       {isDrink(line.item)
-                        ? sweetnessChips(line.sweetness || 'Normal', (level) =>
-                            changeLineSweetness(line, level)
+                        ? optionChips(
+                            { sugar: line.sugar, ice: line.ice },
+                            (kind, value) =>
+                              changeLineOption(line, kind, value),
+                            optionHas(line.item, 'sugar'),
+                            optionHas(line.item, 'ice')
                           )
                         : null}
                     </div>
@@ -511,7 +569,7 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
               <input
                 type="text"
                 value={note}
-                placeholder="e.g. less sugar, no chilli"
+                placeholder="e.g. no chilli"
                 onChange={(event) => setNote(event.target.value)}
               />
             </label>
@@ -541,12 +599,12 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
         </div>
       ) : null}
 
-      {addOnFor ? (
+      {bundle ? (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60 }}>
           <button
             type="button"
             aria-label="Close add-ons"
-            onClick={() => setAddOnFor(null)}
+            onClick={() => setBundle(null)}
             style={{
               position: 'absolute',
               inset: 0,
@@ -576,24 +634,52 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
           >
             <div className="inline" style={{ alignItems: 'center', gap: 8 }}>
               <strong style={{ flex: 1, fontSize: 16 }}>
-                Add on to {addOnFor.parent.name}?
+                {bundle.parent.name}
               </strong>
               <button
                 type="button"
                 className="btn btn-sm"
-                onClick={() => setAddOnFor(null)}
+                onClick={() => setBundle(null)}
               >
-                Done
+                Cancel
               </button>
             </div>
-            <p className="muted small" style={{ margin: '6px 0 8px' }}>
-              Optional — pick any extras, then tap Done.
-            </p>
+
+            <div
+              className="inline"
+              style={{ alignItems: 'center', gap: 8, margin: '10px 0 4px' }}
+            >
+              <span style={{ flex: 1, fontWeight: 600 }}>Quantity</span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={bundle.parentQty <= 1}
+                onClick={() =>
+                  setBundle({ ...bundle, parentQty: bundle.parentQty - 1 })
+                }
+              >
+                −
+              </button>
+              <span style={{ minWidth: 18, textAlign: 'center' }}>
+                {bundle.parentQty}
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() =>
+                  setBundle({ ...bundle, parentQty: bundle.parentQty + 1 })
+                }
+              >
+                +
+              </button>
+            </div>
+
+            <div className="muted small" style={{ marginTop: 6 }}>
+              Add on (optional)
+            </div>
             <div style={{ overflowY: 'auto' }}>
-              {addOnFor.options.map((option) => {
-                const qty = cart
-                  .filter((line) => line.item.sku === option.sku)
-                  .reduce((sum, line) => sum + line.qty, 0);
+              {bundle.options.map((option) => {
+                const qty = bundle.qty[option.sku] || 0;
                 return (
                   <div
                     key={option.sku}
@@ -601,7 +687,7 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 10,
-                      padding: '10px 0',
+                      padding: '8px 0',
                       borderBottom: '1px solid var(--line-soft)',
                     }}
                   >
@@ -620,20 +706,52 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                         {Number(option.price).toFixed(2)}
                       </div>
                     </div>
-                    {qty > 0 ? (
-                      <span className="badge">{qty} added</span>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-primary"
-                      onClick={() => add(option, 1)}
+                    <div
+                      className="inline"
+                      style={{ gap: 6, alignItems: 'center' }}
                     >
-                      Add
-                    </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={qty === 0}
+                        onClick={() =>
+                          setBundle({
+                            ...bundle,
+                            qty: { ...bundle.qty, [option.sku]: qty - 1 },
+                          })
+                        }
+                      >
+                        −
+                      </button>
+                      <span style={{ minWidth: 18, textAlign: 'center' }}>
+                        {qty}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() =>
+                          setBundle({
+                            ...bundle,
+                            qty: { ...bundle.qty, [option.sku]: qty + 1 },
+                          })
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginTop: 12 }}
+              onClick={confirmBundle}
+            >
+              Add to order
+            </button>
           </div>
         </div>
       ) : null}

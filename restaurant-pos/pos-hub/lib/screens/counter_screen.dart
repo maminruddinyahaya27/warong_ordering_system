@@ -4,12 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../models/order.dart';
 import '../models/product.dart';
-import '../services/app_events.dart';
 import '../services/app_settings.dart';
 import '../services/cashier_service.dart';
 import '../services/print_queue_db.dart';
-import '../widgets/receipt_prompt.dart';
-import '../widgets/settle_order.dart';
 
 /// Items pinned to the counter's quick-pick row on first run (filtered to
 /// whatever the cached catalog actually contains).
@@ -25,15 +22,21 @@ const List<String> kCounterDefaultFavs = [
 ];
 
 class _CartLine {
-  _CartLine(this.product, this.qty, [this.note = '']);
+  _CartLine(this.product, this.qty, [this.note = '']) : id = _nextId();
+
+  static int _sequence = 0;
+  static String _nextId() => 'L${DateTime.now().microsecondsSinceEpoch}_${_sequence++}';
+
   final Product product;
+
+  /// Unique per added line. Bundle lines (an item and the add-ons ordered with
+  /// it) are never merged, so each roti keeps its own curry on the ticket.
+  final String id;
+
   int qty;
 
   /// Per-line note, e.g. the sweetness for a drink.
   String note;
-
-  /// Identity of a line: the same drink can appear twice with different notes.
-  String get key => '${product.sku}::$note';
 
   OrderItem toOrderItem() => OrderItem(
         sku: product.sku,
@@ -201,14 +204,16 @@ class _CounterScreenState extends State<CounterScreen> {
 
   OrderTotals get _totals => _cashier.computeTotals(_orderItems);
 
-  static const List<String> _sweetnessLevels = [
-    'Normal',
+  static const List<String> _sugarLevels = [
+    'Normal sugar',
     'Less sugar',
     'No sugar',
   ];
+  static const List<String> _iceLevels = ['Normal ice', 'Less ice', 'No ice'];
 
-  /// Adds an item. Drinks ask for a sweetness level first, and the same drink
-  /// with a different level becomes its own cart line.
+  /// Adds an item. Drinks ask for their levels; items that have add-ons ask for
+  /// a quantity first and then the add-ons, and the whole bundle stays on its
+  /// own cart line so the ticket keep each add-on with its parent.
   void _add(Product product) {
     if (!product.available) {
       _snack('${product.name} is sold out');
@@ -216,77 +221,211 @@ class _CounterScreenState extends State<CounterScreen> {
     }
 
     if (product.isDrink) {
-      _askSweetness(product.name).then((level) {
-        if (!mounted || level == null) return;
-        _addWithNote(product, level == 'Normal' ? '' : level);
-        _maybeAddOns(product);
+      // Hot drinks (and items with no level to ask) skip the dialog.
+      if (!product.askSugar && !product.askIce) {
+        _addWithNote(product, '');
+        return;
+      }
+      _askDrinkOptions(product.name, product.askSugar, product.askIce)
+          .then((note) {
+        if (!mounted || note == null) return;
+        _addWithNote(product, note);
       });
       return;
     }
 
-    _addWithNote(product, '');
-    _maybeAddOns(product);
+    final addOns = _addOnProductsFor(product);
+    if (addOns.isEmpty) {
+      _addWithNote(product, '');
+      return;
+    }
+
+    _askBundle(product, addOns).then((result) {
+      if (!mounted || result == null) return;
+      setState(() {
+        _cart.add(_CartLine(product, result.parentQty, ''));
+        for (final entry in result.addOnQty.entries) {
+          _cart.add(_CartLine(entry.key, entry.value, ''));
+        }
+      });
+    });
   }
 
-  /// Offers the add-on groups of [parent] (e.g. a Roti Canai offers Lauk-pauk
-  /// curries). Picked extras print on the parent's station.
-  Future<void> _maybeAddOns(Product parent) async {
-    final options = _products
-        .where((product) =>
-            product.available &&
-            product.addOnFor.isNotEmpty &&
-            product.addOnFor.split('|').contains(parent.category))
-        .toList();
-    if (options.isEmpty || !mounted) return;
+  /// Add-on items available for [parent] (e.g. the Lauk-pauk curries of a Roti
+  /// Canai). Their items print on the parent's station.
+  List<Product> _addOnProductsFor(Product parent) => _products
+      .where((product) =>
+          product.available &&
+          product.addOnFor.isNotEmpty &&
+          product.addOnFor.split('|').contains(parent.category))
+      .toList();
 
-    final added = <String>[];
-    await showDialog<void>(
+  /// Quantity of the item, then a quantity for each add-on. Returns null when
+  /// cancelled.
+  Future<({int parentQty, Map<Product, int> addOnQty})?> _askBundle(
+    Product parent,
+    List<Product> addOns,
+  ) {
+    var parentQty = 1;
+    final chosen = <Product, int>{};
+    return showDialog<({int parentQty, Map<Product, int> addOnQty})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Widget stepper(String label, int value, ValueChanged<int> onChanged) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(child: Text(label)),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: value <= 0 ? null : () => onChanged(value - 1),
+                  ),
+                  Text('$value',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: () => onChanged(value + 1),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return AlertDialog(
+            title: Text(parent.name),
+            content: SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  stepper(
+                    'Quantity',
+                    parentQty,
+                    (value) => setDialogState(() => parentQty = value),
+                  ),
+                  const Divider(),
+                  const Text('Add on',
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: addOns
+                          .map(
+                            (option) => stepper(
+                              '${option.name}  ${_settings.currency}${option.price.toStringAsFixed(2)}',
+                              chosen[option] ?? 0,
+                              (value) => setDialogState(() {
+                                if (value <= 0) {
+                                  chosen.remove(option);
+                                } else {
+                                  chosen[option] = value;
+                                }
+                              }),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: parentQty <= 0
+                    ? null
+                    : () => Navigator.of(dialogContext)
+                        .pop((parentQty: parentQty, addOnQty: Map.of(chosen))),
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Asks for the levels the item wants (sugar and/or ice). Returns the note to
+  /// print — always set, e.g. "Normal sugar, Less ice" — or null if cancelled.
+  Future<String?> _askDrinkOptions(
+    String itemName,
+    bool askSugar,
+    bool askIce,
+  ) {
+    var sugar = _sugarLevels.first;
+    var ice = _iceLevels.first;
+    return showDialog<String>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Add on to ${parent.name}?'),
+          title: Text(itemName),
           content: SizedBox(
             width: 340,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  added.isEmpty
-                      ? 'Optional — pick any extras, or skip.'
-                      : 'Added: ${added.join(', ')}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 8),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: options
+                if (askSugar) ...[
+                  const Text(
+                    'Sugar',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    children: _sugarLevels
                         .map(
-                          (option) => ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(option.name),
-                            subtitle: Text(
-                              '${_settings.currency}${option.price.toStringAsFixed(2)}',
-                            ),
-                            trailing: const Icon(Icons.add_circle_outline),
-                            onTap: () {
-                              _addWithNote(option, '');
-                              setDialogState(() => added.add(option.name));
-                            },
+                          (level) => ChoiceChip(
+                            label: Text(level),
+                            selected: sugar == level,
+                            onSelected: (_) =>
+                                setDialogState(() => sugar = level),
                           ),
                         )
                         .toList(),
                   ),
-                ),
+                ],
+                if (askSugar && askIce) const SizedBox(height: 10),
+                if (askIce) ...[
+                  const Text(
+                    'Ice',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    children: _iceLevels
+                        .map(
+                          (level) => ChoiceChip(
+                            label: Text(level),
+                            selected: ice == level,
+                            onSelected: (_) =>
+                                setDialogState(() => ice = level),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
               ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(added.isEmpty ? 'No add-on' : 'Done'),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(
+                [
+                  if (askSugar) sugar,
+                  if (askIce) ice,
+                ].join(', '),
+              ),
+              child: const Text('Add'),
             ),
           ],
         ),
@@ -294,28 +433,15 @@ class _CounterScreenState extends State<CounterScreen> {
     );
   }
 
-  Future<String?> _askSweetness(String itemName) {
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(itemName),
-        content: const Text('Sweetness level?'),
-        actions: _sweetnessLevels
-            .map(
-              (level) => TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(level),
-                child: Text(level),
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-
-  void _addWithNote(Product product, String note) {
+  /// Adds a line. Plain items merge with an identical line; bundle lines (an
+  /// item ordered with add-ons) never merge, so each keeps its own add-ons.
+  void _addWithNote(Product product, String note, {bool merge = true}) {
     setState(() {
-      final key = '${product.sku}::$note';
-      final index = _cart.indexWhere((line) => line.key == key);
+      final index = merge
+          ? _cart.indexWhere(
+              (line) => line.product.sku == product.sku && line.note == note,
+            )
+          : -1;
       if (index >= 0) {
         _cart[index].qty += 1;
       } else {
@@ -388,53 +514,6 @@ class _CounterScreenState extends State<CounterScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  /// Creates the order from the cart, then takes payment for it — possibly in
-  /// several tenders if the bill is split.
-  Future<void> _charge() async {
-    if (_cart.isEmpty) {
-      _snack('Cart is empty');
-      return;
-    }
-    if (!_tableOk()) return;
-
-    setState(() => _busy = true);
-    Order? created;
-    try {
-      final result = await _cashier.createOrAppendOrder(
-        channel: 'counter',
-        items: _orderItems,
-        tableNo: _table.text,
-        serverName: _server.text,
-        note: _note.text,
-        orderType: _orderType,
-      );
-      created = result.order;
-      _clearCart();
-      AppEvents.ordersChanged();
-    } catch (error) {
-      _snack(error.toString().replaceFirst('Exception: ', ''));
-      return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-
-    if (!mounted) return;
-    final settled = await settleOrder(context, created);
-    if (settled == null || !mounted) return;
-    if (!settled.isSettled) {
-      _snack('${settled.orderNo} part-paid — balance '
-          '${_settings.currency}${settled.balance.toStringAsFixed(2)}');
-      return;
-    }
-
-    final print = await askPrintReceipt(context, settled.orderNo);
-    if (print) {
-      await _cashier.reprintReceipt(settled);
-    }
-    final lines = settled.items.fold<int>(0, (sum, item) => sum + item.qty);
-    _snack('${settled.orderNo} closed — $lines item(s) on one receipt');
   }
 
   // ----------------------------------------------------------------- build
@@ -981,27 +1060,15 @@ class _CounterScreenState extends State<CounterScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: (_busy || _cart.isEmpty)
-                    ? null
-                    : () => _runAction(_sendToKitchen, sheet: sheet),
-                child: const Text('Create order'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: (_busy || _cart.isEmpty)
-                    ? null
-                    : () => _runAction(_charge, sheet: sheet),
-                icon: const Icon(Icons.point_of_sale),
-                label: const Text('Charge'),
-              ),
-            ),
-          ],
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: (_busy || _cart.isEmpty)
+                ? null
+                : () => _runAction(_sendToKitchen, sheet: sheet),
+            icon: const Icon(Icons.receipt_long),
+            label: const Text('Create order'),
+          ),
         ),
       ],
     );

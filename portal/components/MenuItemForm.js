@@ -11,7 +11,10 @@ function initialForm(item, defaultGroupId) {
     price: item ? Number(item.price).toFixed(2) : '',
     station: item?.station || '',
     group: item?.groupId || defaultGroupId || '',
-    isDrink: item?.options === 'drink',
+    isDrink: (item?.options || '').split(',').includes('drink'),
+    askSugar: (item?.options || '').split(',').includes('sugar'),
+    askIce: (item?.options || '').split(',').includes('ice'),
+    addOnFor: Array.isArray(item?.addOnFor) ? item.addOnFor : [],
     description: item?.description || '',
     available: item?.available !== false,
     sortOrder: item?.sortOrder ?? 0,
@@ -36,6 +39,18 @@ export default function MenuItemForm({
     setForm((previous) => ({ ...previous, [field]: value }));
   }
 
+  function addAddOnFor(name) {
+    if (!name || form.addOnFor.includes(name)) return;
+    update('addOnFor', [...form.addOnFor, name]);
+  }
+
+  function removeAddOnFor(name) {
+    update(
+      'addOnFor',
+      form.addOnFor.filter((entry) => entry !== name)
+    );
+  }
+
   async function submit(event) {
     event.preventDefault();
     setSaving(true);
@@ -46,7 +61,12 @@ export default function MenuItemForm({
       price: form.price,
       station: form.station,
       group: form.group,
-      options: form.isDrink ? 'drink' : '',
+      options: form.isDrink
+        ? ['drink', form.askSugar && 'sugar', form.askIce && 'ice']
+            .filter(Boolean)
+            .join(',')
+        : '',
+      addOnFor: form.addOnFor || [],
       description: form.description,
       available: form.available,
       sortOrder: Number(form.sortOrder) || 0,
@@ -185,6 +205,59 @@ export default function MenuItemForm({
               </span>
             </label>
 
+            <div className="field">
+              <span>Add-on for groups</span>
+              <div
+                className="inline"
+                style={{ flexWrap: 'wrap', gap: 6, marginBottom: 6 }}
+              >
+                {form.addOnFor.length === 0 ? (
+                  <span className="muted small">None</span>
+                ) : (
+                  form.addOnFor.map((name) => (
+                    <span key={name} className="badge">
+                      {name}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${name}`}
+                        onClick={() => removeAddOnFor(name)}
+                        style={{
+                          marginLeft: 6,
+                          border: 0,
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          color: 'inherit',
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+              <select
+                value=""
+                onChange={(event) => {
+                  addAddOnFor(event.target.value);
+                  event.target.value = '';
+                }}
+              >
+                <option value="">+ add a parent group…</option>
+                {groups
+                  .filter((group) => !form.addOnFor.includes(group.name))
+                  .map((group) => (
+                    <option key={group.id} value={group.name}>
+                      {group.name}
+                    </option>
+                  ))}
+              </select>
+              <span className="hint">
+                When a chosen group is on the same order, this item prints on
+                that group&apos;s station (e.g. Kari Kambing + Roti Canai →
+                Griddle). Leave empty to always use its own station.
+              </span>
+            </div>
+
             <label className="field">
               <span>Sort order</span>
               <input
@@ -206,10 +279,29 @@ export default function MenuItemForm({
                   checked={form.isDrink}
                   onChange={(event) => update('isDrink', event.target.checked)}
                 />
-                <span className="small">
-                  Drink (asks for sweetness &amp; ice in the ordering app)
-                </span>
+                <span className="small">Drink</span>
               </span>
+              {form.isDrink ? (
+                <span className="field-row" style={{ marginTop: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.askSugar}
+                    onChange={(event) =>
+                      update('askSugar', event.target.checked)
+                    }
+                  />
+                  <span className="small">Ask sugar level</span>
+                  <input
+                    type="checkbox"
+                    checked={form.askIce}
+                    onChange={(event) => update('askIce', event.target.checked)}
+                    style={{ marginLeft: 12 }}
+                  />
+                  <span className="small">
+                    Ask ice level (leave off for hot drinks)
+                  </span>
+                </span>
+              ) : null}
             </label>
 
             <label className="field">

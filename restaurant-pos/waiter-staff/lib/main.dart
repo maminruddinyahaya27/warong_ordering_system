@@ -402,105 +402,84 @@ class _OrderScreenState extends State<OrderScreen> {
     });
   }
 
-  static const List<String> _sweetnessLevels = [
-    'Normal',
+  static const List<String> _sugarLevels = [
+    'Normal sugar',
     'Less sugar',
     'No sugar',
   ];
+  static const List<String> _iceLevels = ['Normal ice', 'Less ice', 'No ice'];
 
-  Future<String?> _askSweetness(String itemName) {
+  /// Asks for the levels the item wants (sugar and/or ice). Returns the note to
+  /// print — always set, e.g. "Normal sugar, Less ice" — or null if cancelled.
+  Future<String?> _askDrinkOptions(
+    String itemName,
+    bool askSugar,
+    bool askIce,
+  ) {
+    var sugar = _sugarLevels.first;
+    var ice = _iceLevels.first;
     return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(itemName),
-        content: const Text('Sweetness level?'),
-        actions: _sweetnessLevels
-            .map(
-              (level) => TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(level),
-                child: Text(level),
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-
-  /// Drinks ask for a sweetness level first; the same drink with a different
-  /// level becomes its own order line.
-  void _addItem(MenuItem item) {
-    if (!item.available) {
-      _snack('${item.name} is sold out');
-      return;
-    }
-    if (item.isDrink) {
-      _askSweetness(item.name).then((level) {
-        if (!mounted || level == null) return;
-        _addItemWithNote(item, level == 'Normal' ? '' : level);
-        _maybeAddOns(item);
-      });
-      return;
-    }
-    _addItemWithNote(item, '');
-    _maybeAddOns(item);
-  }
-
-  /// Offers the add-on groups of [parent] (e.g. a Roti Canai offers Lauk-pauk
-  /// curries). Picked extras print on the parent's station.
-  Future<void> _maybeAddOns(MenuItem parent) async {
-    final options = _menu
-        .where((item) =>
-            item.available &&
-            item.addOnFor.isNotEmpty &&
-            item.addOnFor.split('|').contains(parent.category))
-        .toList();
-    if (options.isEmpty || !mounted) return;
-
-    final added = <String>[];
-    await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Add on to ${parent.name}?'),
+          title: Text(itemName),
           content: SizedBox(
             width: 340,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  added.isEmpty
-                      ? 'Optional — pick any extras, or skip.'
-                      : 'Added: ${added.join(', ')}',
-                  style: const TextStyle(fontSize: 12, color: kMuted),
-                ),
-                const SizedBox(height: 8),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: options
+                if (askSugar) ...[
+                  const Text('Sugar',
+                      style: TextStyle(fontSize: 12, color: kMuted)),
+                  Wrap(
+                    spacing: 6,
+                    children: _sugarLevels
                         .map(
-                          (option) => ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(option.name),
-                            trailing: const Icon(Icons.add_circle_outline),
-                            onTap: () {
-                              _addItemWithNote(option, '');
-                              setDialogState(() => added.add(option.name));
-                            },
+                          (level) => ChoiceChip(
+                            label: Text(level),
+                            selected: sugar == level,
+                            onSelected: (_) =>
+                                setDialogState(() => sugar = level),
                           ),
                         )
                         .toList(),
                   ),
-                ),
+                ],
+                if (askSugar && askIce) const SizedBox(height: 10),
+                if (askIce) ...[
+                  const Text('Ice',
+                      style: TextStyle(fontSize: 12, color: kMuted)),
+                  Wrap(
+                    spacing: 6,
+                    children: _iceLevels
+                        .map(
+                          (level) => ChoiceChip(
+                            label: Text(level),
+                            selected: ice == level,
+                            onSelected: (_) =>
+                                setDialogState(() => ice = level),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
               ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(added.isEmpty ? 'No add-on' : 'Done'),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(
+                [
+                  if (askSugar) sugar,
+                  if (askIce) ice,
+                ].join(', '),
+              ),
+              child: const Text('Add'),
             ),
           ],
         ),
@@ -508,14 +487,158 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  void _addItemWithNote(MenuItem item, String note) {
+  /// Adds an item. Drinks ask for their levels; items that have add-ons ask for
+  /// a quantity first and then the add-ons, and the bundle stays on its own
+  /// line so each add-on prints under the item it came with.
+  void _addItem(MenuItem item) {
+    if (!item.available) {
+      _snack('${item.name} is sold out');
+      return;
+    }
+    if (item.isDrink) {
+      // Hot drinks (and items with no level to ask) skip the dialog.
+      if (!item.askSugar && !item.askIce) {
+        _addItemWithNote(item, '');
+        return;
+      }
+      _askDrinkOptions(item.name, item.askSugar, item.askIce).then((note) {
+        if (!mounted || note == null) return;
+        _addItemWithNote(item, note);
+      });
+      return;
+    }
+
+    final addOns = _addOnItemsFor(item);
+    if (addOns.isEmpty) {
+      _addItemWithNote(item, '');
+      return;
+    }
+
+    _askBundle(item, addOns).then((result) {
+      if (!mounted || result == null) return;
+      setState(() {
+        _addItemWithNote(item, '', merge: false, qty: result.parentQty);
+        for (final entry in result.addOnQty.entries) {
+          _addItemWithNote(entry.key, '', merge: false, qty: entry.value);
+        }
+      });
+    });
+  }
+
+  /// Add-on items available for [parent] (e.g. the Lauk-pauk curries of a Roti
+  /// Canai). They print on the parent's station.
+  List<MenuItem> _addOnItemsFor(MenuItem parent) => _menu
+      .where((item) =>
+          item.available &&
+          item.addOnFor.isNotEmpty &&
+          item.addOnFor.split('|').contains(parent.category))
+      .toList();
+
+  /// Quantity of the item, then a quantity for each add-on. Null if cancelled.
+  Future<({int parentQty, Map<MenuItem, int> addOnQty})?> _askBundle(
+    MenuItem parent,
+    List<MenuItem> addOns,
+  ) {
+    var parentQty = 1;
+    final chosen = <MenuItem, int>{};
+    return showDialog<({int parentQty, Map<MenuItem, int> addOnQty})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Widget stepper(String label, int value, ValueChanged<int> onChanged) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Expanded(child: Text(label)),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: value <= 0 ? null : () => onChanged(value - 1),
+                  ),
+                  Text('$value',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: () => onChanged(value + 1),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return AlertDialog(
+            title: Text(parent.name),
+            content: SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  stepper(
+                    'Quantity',
+                    parentQty,
+                    (value) => setDialogState(() => parentQty = value),
+                  ),
+                  const Divider(),
+                  const Text('Add on',
+                      style: TextStyle(fontSize: 12, color: kMuted)),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: addOns
+                          .map(
+                            (option) => stepper(
+                              option.name,
+                              chosen[option] ?? 0,
+                              (value) => setDialogState(() {
+                                if (value <= 0) {
+                                  chosen.remove(option);
+                                } else {
+                                  chosen[option] = value;
+                                }
+                              }),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: parentQty <= 0
+                    ? null
+                    : () => Navigator.of(dialogContext)
+                        .pop((parentQty: parentQty, addOnQty: Map.of(chosen))),
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _addItemWithNote(
+    MenuItem item,
+    String note, {
+    bool merge = true,
+    int qty = 1,
+  }) {
     setState(() {
-      final index =
-          _items.indexWhere((i) => i.name == item.name && i.note == note);
+      final index = merge
+          ? _items.indexWhere((i) => i.name == item.name && i.note == note)
+          : -1;
       if (index >= 0) {
         _items[index] = OrderItem(
+          id: _items[index].id,
           name: item.name,
-          qty: _items[index].qty + 1,
+          qty: _items[index].qty + qty,
           price: item.price,
           station: item.station,
           note: note,
@@ -523,7 +646,7 @@ class _OrderScreenState extends State<OrderScreen> {
       } else {
         _items.add(OrderItem(
           name: item.name,
-          qty: 1,
+          qty: qty,
           price: item.price,
           station: item.station,
           note: note,
@@ -532,27 +655,28 @@ class _OrderScreenState extends State<OrderScreen> {
     });
   }
 
-  void _changeQty(String name, String note, int delta) {
+  void _changeQty(OrderItem item, int delta) {
     setState(() {
-      final index = _items.indexWhere((i) => i.name == name && i.note == note);
+      final index = _items.indexWhere((i) => i.id == item.id);
       if (index < 0) return;
       final next = _items[index].qty + delta;
       if (next <= 0) {
         _items.removeAt(index);
       } else {
         _items[index] = OrderItem(
-          name: name,
+          id: _items[index].id,
+          name: _items[index].name,
           qty: next,
           price: _items[index].price,
           station: _items[index].station,
-          note: note,
+          note: _items[index].note,
         );
       }
     });
   }
 
-  void _removeItem(String name, String note) {
-    setState(() => _items.removeWhere((i) => i.name == name && i.note == note));
+  void _removeItem(OrderItem item) {
+    setState(() => _items.removeWhere((i) => i.id == item.id));
   }
 
   void _clearOrder() {
@@ -1308,17 +1432,17 @@ class _OrderScreenState extends State<OrderScreen> {
         children: [
           IconButton(
             icon: const Icon(Icons.remove_circle_outline),
-            onPressed: () => _changeQty(item.name, item.note, -1),
+            onPressed: () => _changeQty(item, -1),
           ),
           Text('${item.qty}',
               style: const TextStyle(fontWeight: FontWeight.bold)),
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
-            onPressed: () => _changeQty(item.name, item.note, 1),
+            onPressed: () => _changeQty(item, 1),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: () => _removeItem(item.name, item.note),
+            onPressed: () => _removeItem(item),
           ),
         ],
       ),

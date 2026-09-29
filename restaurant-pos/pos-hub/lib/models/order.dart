@@ -9,6 +9,10 @@ class OrderItem {
   final String station;
   final String note;
 
+  /// True once a part payment has covered this line, so the cashier can see at
+  /// a glance what is still owed (paid lines print struck through).
+  final bool paid;
+
   const OrderItem({
     this.id,
     this.orderId,
@@ -19,9 +23,10 @@ class OrderItem {
     required this.lineTotal,
     required this.station,
     this.note = '',
+    this.paid = false,
   });
 
-  OrderItem copyWith({int? qty}) => OrderItem(
+  OrderItem copyWith({int? qty, bool? paid}) => OrderItem(
         id: id,
         orderId: orderId,
         sku: sku,
@@ -31,6 +36,7 @@ class OrderItem {
         lineTotal: (qty ?? this.qty) * unitPrice,
         station: station,
         note: note,
+        paid: paid ?? this.paid,
       );
 
   Map<String, dynamic> toMap() => {
@@ -43,6 +49,7 @@ class OrderItem {
         'line_total': lineTotal,
         'station': station,
         'note': note,
+        'paid': paid ? 1 : 0,
       };
 
   factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem(
@@ -55,6 +62,7 @@ class OrderItem {
         lineTotal: (map['line_total'] as num?)?.toDouble() ?? 0,
         station: map['station'] as String? ?? 'KITCHEN',
         note: map['note'] as String? ?? '',
+        paid: (map['paid'] as int? ?? 0) == 1,
       );
 }
 

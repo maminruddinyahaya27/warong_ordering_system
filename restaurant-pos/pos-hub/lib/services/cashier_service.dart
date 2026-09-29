@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../models/order.dart';
+import '../models/product.dart';
 import 'app_settings.dart';
+import 'order_grouping.dart';
 import 'print_queue_db.dart';
 import 'queue_dispatcher.dart';
 
@@ -242,10 +244,12 @@ class CashierService {
   }
 
   /// Station each item should print at, after applying the portal's "add-on
-  /// for" group rule: an add-on item (e.g. a Lauk-pauk curry) ordered together
-  /// with its parent group (e.g. Roti Canai) prints on the parent's station, so
-  /// one ticket carries the roti and its curry.
-  Future<Map<String, String>> _stationOverrides(Order order) async {
+  /// for" rule: an add-on item (e.g. a Lauk-pauk curry) ordered together with
+  /// its parent group (e.g. Roti Canai) prints on the parent's station, so one
+  /// ticket carries the roti and its curry. Also returns the product lookup so
+  /// tickets can nest add-ons under the item they were ordered with.
+  Future<({Map<String, String> overrides, Map<String, Product> bySku})>
+      _stationOverrides(Order order) async {
     final products = await _db.getProducts();
     final bySku = {for (final product in products) product.sku: product};
 
@@ -274,20 +278,24 @@ class CashierService {
         }
       }
     }
-    return overrides;
+    return (overrides: overrides, bySku: bySku);
   }
 
   String _stationFor(OrderItem item, Map<String, String> overrides) =>
       overrides[item.sku] ?? (item.station.isEmpty ? 'KITCHEN' : item.station);
 
   Future<void> sendStationTickets(Order order) async {
-    final overrides = await _stationOverrides(order);
+    final data = await _stationOverrides(order);
     final stations = <String>{};
     for (final item in order.items) {
-      stations.add(_stationFor(item, overrides));
+      stations.add(_stationFor(item, data.overrides));
     }
     for (final station in stations) {
-      await _db.enqueue(station, '', _ticketPayload(station, order, overrides));
+      await _db.enqueue(
+        station,
+        '',
+        _ticketPayload(station, order, data.overrides, data.bySku),
+      );
     }
     // Printing runs in the background: awaiting it would keep the caller (and
     // the UI, or the waiter's HTTP request) waiting for every Bluetooth ticket
@@ -475,14 +483,18 @@ class CashierService {
   Future<void> _sendTicketsFor(Order order, List<OrderItem> items) async {
     // Overrides are computed from the whole order, so an add-on added later
     // still lands on its parent's station.
-    final overrides = await _stationOverrides(order);
+    final data = await _stationOverrides(order);
     final stations = <String>{};
     for (final item in items) {
-      stations.add(_stationFor(item, overrides));
+      stations.add(_stationFor(item, data.overrides));
     }
     final partial = order.copyWith(items: items);
     for (final station in stations) {
-      await _db.enqueue(station, '', _ticketPayload(station, partial, overrides));
+      await _db.enqueue(
+        station,
+        '',
+        _ticketPayload(station, partial, data.overrides, data.bySku),
+      );
     }
     _kickPrinter();
   }
@@ -490,6 +502,77 @@ class CashierService {
   Future<void> reprintReceipt(Order order) async {
     final payload = jsonEncode(await _receiptPayload(order));
     await _db.enqueue(receiptStation, '', payload, kind: 'receipt');
+    _kickPrinter();
+  }
+
+  /// Receipt for a part payment: only the items the customer paid for this
+  /// round, the amount taken, and what is left on the bill.
+  Future<void> printPartialReceipt(
+    Order order,
+    List<int> itemIds,
+    double amount,
+  ) async {
+    final picked = order.items
+        .where((item) => item.id != null && itemIds.contains(item.id))
+        .toList();
+    if (picked.isEmpty) {
+      await reprintReceipt(order);
+      return;
+    }
+
+    final payments = order.id == null
+        ? const <Map<String, dynamic>>[]
+        : await _db.getOrderPayments(order.id!);
+    final last = payments.isNotEmpty ? payments.last : null;
+
+    var bySku = const <String, Product>{};
+    try {
+      bySku = productsBySku(await _db.getProducts());
+    } catch (_) {
+      bySku = const <String, Product>{};
+    }
+    final childItems = <OrderItem>{};
+    for (final line in groupOrderItems(picked, bySku)) {
+      childItems.addAll(line.children);
+    }
+
+    final subtotal = _round2(
+      picked.fold<double>(0, (sum, item) => sum + item.lineTotal),
+    );
+    final payload = {
+      'restaurantName': _settings.restaurantName,
+      'footer': _settings.receiptFooter,
+      'currency': _settings.currency,
+      'orderNo': order.orderNo,
+      'table': order.tableNo,
+      'server': order.serverName,
+      'channel': order.channel,
+      'orderType': order.orderType,
+      'when': _formatDateTime(DateTime.now().millisecondsSinceEpoch),
+      'items': picked
+          .map((item) => {
+                'name': item.name,
+                'qty': item.qty,
+                'price': item.unitPrice,
+                'line': item.lineTotal,
+                'addOn': childItems.contains(item),
+              })
+          .toList(),
+      'subtotal': subtotal,
+      // The rest of the charge is this receipt's share of the tax.
+      'tax': _round2(amount - subtotal),
+      'taxRate': _settings.taxRate,
+      'taxInclusive': _settings.taxInclusive,
+      'discount': 0,
+      'total': amount,
+      'balance': _round2(order.balance - amount),
+      'payment': (last?['method'] ?? 'cash').toString(),
+      'tendered': ((last?['tendered'] as num?) ?? amount).toDouble(),
+      'change': ((last?['change_due'] as num?) ?? 0).toDouble(),
+      'payments': const <Map<String, dynamic>>[],
+    };
+
+    await _db.enqueue(receiptStation, '', jsonEncode(payload), kind: 'receipt');
     _kickPrinter();
   }
 
@@ -537,10 +620,27 @@ class CashierService {
       rule,
     ];
 
-    for (final item in order.items) {
-      lines.add(item.name);
-      lines.add(row('  ${item.qty} x ${money(item.unitPrice)}',
-          money(item.lineTotal)));
+    // Numbered items, with each add-on nested under the item it came with.
+    // The catalogue may be unavailable (preview before a sync), in which case
+    // every line simply prints as a normal item.
+    var bySku = const <String, Product>{};
+    try {
+      bySku = productsBySku(await _db.getProducts());
+    } catch (_) {
+      bySku = const <String, Product>{};
+    }
+    var itemNumber = 0;
+    for (final line in groupOrderItems(order.items, bySku)) {
+      itemNumber += 1;
+      lines.add('$itemNumber. ${line.item.name} x ${line.item.qty}');
+      lines.add(row('  ${line.item.qty} x ${money(line.item.unitPrice)}',
+          money(line.item.lineTotal)));
+      for (final child in line.children) {
+        lines.add(
+            '    - ${child.name}${child.qty > 1 ? ' x ${child.qty}' : ''}');
+        lines.add(row('      ${child.qty} x ${money(child.unitPrice)}',
+            money(child.lineTotal)));
+      }
     }
 
     lines.add(rule);
@@ -587,36 +687,45 @@ class CashierService {
 
   String _ticketPayload(
     String station,
-    Order order, [
-    Map<String, String>? overrides,
-  ]) {
+    Order order,
+    Map<String, String> overrides,
+    Map<String, Product> bySku,
+  ) {
     final sb = StringBuffer();
     final takeAway = order.orderType == 'take_away';
-    sb.writeln('Station: $station');
-    // Dine-in tickets are identified by TABLE, take-away by its TA order
-    // number — never by the internal order number of a dine-in bill.
+    const rule = '------------------------------';
+
+    sb.writeln('ORDER - ${order.orderNo}');
+    // Dine-in is identified by its table, take-away by its TA number.
     if (takeAway) {
-      sb.writeln('Take Away - ${order.orderNo}');
-    } else if (order.tableNo.isEmpty) {
-      sb.writeln('No table');
+      sb.writeln('TABLE - ${order.orderNo}');
     } else {
-      sb.writeln('Table:   ${order.tableNo}');
+      sb.writeln(
+        'TABLE - ${order.tableNo.isEmpty ? 'No table' : order.tableNo}',
+      );
     }
-    if (order.serverName.isNotEmpty) sb.writeln('Server:  ${order.serverName}');
-    sb.writeln('------------------------------');
-    for (final item in order.items) {
-      final itemStation = overrides?[item.sku] ??
-          (item.station.isEmpty ? 'KITCHEN' : item.station);
-      if (itemStation != station) continue;
-      sb.writeln('${item.name} x ${item.qty}');
-      if (item.note.isNotEmpty) {
-        sb.writeln('   ${item.note}');
+    sb.writeln(rule);
+
+    final onStation = order.items
+        .where((item) => _stationFor(item, overrides) == station)
+        .toList();
+
+    var number = 0;
+    for (final line in groupOrderItems(onStation, bySku)) {
+      number += 1;
+      sb.writeln('$number. ${line.item.name} X ${line.item.qty}');
+      if (line.item.note.isNotEmpty) sb.writeln('    - ${line.item.note}');
+      for (final addOn in line.children) {
+        final qty = addOn.qty > 1 ? ' X ${addOn.qty}' : '';
+        sb.writeln('    - ${addOn.name}$qty');
       }
+      sb.writeln('');
     }
-    sb.writeln('------------------------------');
+
+    sb.writeln(rule);
     if (order.note.isNotEmpty) {
       sb.writeln('Note: ${order.note}');
-      sb.writeln('------------------------------');
+      sb.writeln(rule);
     }
     return sb.toString();
   }
@@ -625,6 +734,17 @@ class CashierService {
     final payments = order.id == null
         ? const <Map<String, dynamic>>[]
         : await _db.getOrderPayments(order.id!);
+    // Add-ons print indented under the item they came with.
+    var bySku = const <String, Product>{};
+    try {
+      bySku = productsBySku(await _db.getProducts());
+    } catch (_) {
+      bySku = const <String, Product>{};
+    }
+    final childItems = <OrderItem>{};
+    for (final line in groupOrderItems(order.items, bySku)) {
+      childItems.addAll(line.children);
+    }
     // What the customer actually paid: the sum of tenders once settled.
     final collected = order.paid > 0 ? _round2(order.paid) : order.total;
     // The tender row is the source of truth for a single payment (cash shows
@@ -653,6 +773,7 @@ class CashierService {
                 'qty': i.qty,
                 'price': i.unitPrice,
                 'line': i.lineTotal,
+                'addOn': childItems.contains(i),
               })
           .toList(),
       'subtotal': order.subtotal,

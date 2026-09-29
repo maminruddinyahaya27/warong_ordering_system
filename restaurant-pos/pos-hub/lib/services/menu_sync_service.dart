@@ -147,10 +147,24 @@ class MenuSyncService {
 
     lastSync = DateTime.now();
     lastError = null;
-    await _settings.save({
+
+    // The portal owns the money settings: adopt its tax rate and currency so a
+    // restaurant with no tax does not print a tax line, and prices show the
+    // right symbol.
+    final updates = <String, String>{
       'last_sync_at': lastSync!.toIso8601String(),
       'last_sync_error': '',
-    });
+    };
+    final taxRate = decoded['taxRate'];
+    if (taxRate is num) {
+      updates['tax_rate'] = taxRate.toString();
+    }
+    final currency = decoded['currency']?.toString();
+    if (currency != null && currency.trim().isNotEmpty) {
+      updates['currency'] = currency.trim();
+    }
+
+    await _settings.save(updates);
     return MenuSyncResult(products.length, lastSync!);
   }
 

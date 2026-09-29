@@ -108,7 +108,7 @@ void main() {
     );
   });
 
-  test('kitchen tickets identify the order by table, not order number',
+  test('kitchen tickets show the order number and the table',
       () async {
     final db = PrintQueueDb.instance;
     await db.clear();
@@ -124,10 +124,8 @@ void main() {
     final jobs = await db.getAllJobs();
     expect(jobs, hasLength(1));
     final payload = jobs.first.payload;
-    expect(payload, contains('Table:   12'));
-    expect(payload, isNot(contains('Order:')));
-    expect(payload, isNot(contains(order.orderNo)));
-    expect(payload, isNot(contains('ORD-')));
+    expect(payload, contains('ORDER - ${order.orderNo}'));
+    expect(payload, contains('TABLE - 12'));
   });
 
   test('take away is marked on the ticket and the receipt', () async {
@@ -144,10 +142,9 @@ void main() {
     expect(order.orderType, 'take_away');
 
     final jobs = await db.getAllJobs();
-    // The ticket is identified by "Take Away - <order number>".
-    expect(jobs.first.payload, contains('Take Away - ${order.orderNo}'));
-    expect(jobs.first.payload, contains('Station:'));
-    expect(jobs.first.payload, isNot(contains('Table:')));
+    // Take-away tickets carry the TA number on the TABLE line.
+    expect(jobs.first.payload, contains('ORDER - ${order.orderNo}'));
+    expect(jobs.first.payload, contains('TABLE - ${order.orderNo}'));
 
     final preview = await cashier.receiptPreview(order);
     expect(preview, contains('TAKE AWAY'));

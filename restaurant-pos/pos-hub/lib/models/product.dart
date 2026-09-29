@@ -36,6 +36,11 @@ class Product {
 
   bool get isDrink => options.toLowerCase().contains('drink');
 
+  /// Whether the ordering flow should ask for these levels (from the portal's
+  /// per-item options, e.g. hot water = drink,sugar with no ice).
+  bool get askSugar => options.toLowerCase().contains('sugar');
+  bool get askIce => options.toLowerCase().contains('ice');
+
   Map<String, dynamic> toMap() => {
         'sku': sku,
         'name': name,

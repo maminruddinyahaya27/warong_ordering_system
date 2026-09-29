@@ -1,5 +1,3 @@
-import { DRINK_OPTION } from '@/lib/constants';
-
 export function normalizePrice(value) {
   if (value === '' || value === null || value === undefined) return null;
   const number = Number(value);
@@ -48,11 +46,30 @@ export function validateMenuItem(body, { partial = false } = {}) {
   }
 
   if (body.options !== undefined) {
-    const options = String(body.options ?? '').trim();
-    if (options && options !== DRINK_OPTION) {
-      errors.push(`options only supports "${DRINK_OPTION}" or an empty value`);
+    const tags = String(body.options ?? '')
+      .split(',')
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean);
+    const allowed = ['drink', 'sugar', 'ice'];
+    const unknown = tags.filter((tag) => !allowed.includes(tag));
+    if (unknown.length) {
+      errors.push(`options only supports: ${allowed.join(', ')}`);
     } else {
-      values.options = options;
+      values.options = allowed.filter((tag) => tags.includes(tag)).join(',');
+    }
+  }
+
+  if (body.addOnFor !== undefined) {
+    const list = Array.isArray(body.addOnFor) ? body.addOnFor : [];
+    const cleaned = [
+      ...new Set(list.map((value) => String(value ?? '').trim()).filter(Boolean)),
+    ];
+    if (cleaned.length > 20) {
+      errors.push('an item can be an add-on for at most 20 groups');
+    } else if (cleaned.some((name) => name.length > 60)) {
+      errors.push('add-on group names must be 60 characters or fewer');
+    } else {
+      values.addOnFor = cleaned;
     }
   }
 
@@ -104,20 +121,6 @@ export function validateGroup(body, { partial = false } = {}) {
       errors.push('station must be 40 characters or fewer');
     } else {
       values.station = station;
-    }
-  }
-
-  if (body.addOns !== undefined) {
-    const list = Array.isArray(body.addOns) ? body.addOns : [];
-    const cleaned = [
-      ...new Set(list.map((value) => String(value ?? '').trim()).filter(Boolean)),
-    ];
-    if (cleaned.length > 20) {
-      errors.push('a group can have at most 20 add-on groups');
-    } else if (cleaned.some((name) => name.length > 60)) {
-      errors.push('add-on group names must be 60 characters or fewer');
-    } else {
-      values.addOns = cleaned;
     }
   }
 

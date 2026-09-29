@@ -8,33 +8,49 @@ import 'payment_dialog.dart';
 /// Takes payment for [order] — possibly across several tenders, because a bill
 /// can be split between two people or paid part cash / part card.
 ///
+/// [firstAmount] charges that amount first (a partial payment for picked
+/// items) instead of the whole balance; later tenders use the real balance.
+///
 /// Returns the order after the cashier finishes: fully settled, part-paid, or
 /// unchanged when they cancel out of the first payment.
-Future<Order?> settleOrder(BuildContext context, Order order) async {
+Future<Order?> settleOrder(
+  BuildContext context,
+  Order order, {
+  double? firstAmount,
+}) async {
   final cashier = CashierService.instance;
   final settings = SettingsStore.instance;
   var current = order;
+  var first = true;
 
   while (!current.isSettled) {
     if (!context.mounted) return current.paid > 0 ? current : null;
-    final balance = current.balance;
+    final partialFirst = first && firstAmount != null && firstAmount > 0;
+    final amount = partialFirst ? firstAmount : current.balance;
+    first = false;
     final payment = await showPaymentDialog(
       context,
-      total: balance,
+      total: amount,
       currency: settings.currency,
-      title: current.paid > 0
-          ? 'Balance ${settings.currency}${balance.toStringAsFixed(2)} '
-              'of ${settings.currency}${current.total.toStringAsFixed(2)}'
-          : null,
-      payableFor: (method) => cashier.payableTotal(balance, method),
+      title: partialFirst
+          ? 'Part payment ${settings.currency}${amount.toStringAsFixed(2)}'
+          : current.paid > 0
+              ? 'Balance ${settings.currency}${current.balance.toStringAsFixed(2)} '
+                  'of ${settings.currency}${current.total.toStringAsFixed(2)}'
+              : null,
+      payableFor: (method) => cashier.payableTotal(amount, method),
     );
     if (payment == null) return current.paid > 0 ? current : null;
 
     try {
+      // Cash passes what was handed over (so change is recorded); card and
+      // e-wallet pass the amount collected, which may be a part payment.
+      final isCash = payment.method == 'cash';
       current = await cashier.addPayment(
         current.id!,
         method: payment.method,
-        tendered: payment.tendered,
+        amount: isCash ? null : payment.amount,
+        tendered: isCash ? payment.amount : 0,
       );
     } catch (error) {
       if (context.mounted) {

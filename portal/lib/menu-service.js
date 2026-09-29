@@ -155,6 +155,7 @@ export function serializeMenuItem(doc) {
     groupId: item.group ? String(item.group) : null,
     group: item.groupName || '',
     options: item.options || '',
+    addOnFor: Array.isArray(item.addOnFor) ? item.addOnFor : [],
     description: item.description || '',
     available: item.available !== false,
     sortOrder: item.sortOrder ?? 0,
@@ -171,7 +172,6 @@ export function serializeGroup(doc, itemCount = 0) {
     description: group.description || '',
     color: group.color || '',
     station: group.station || '',
-    addOns: Array.isArray(group.addOns) ? group.addOns : [],
     sortOrder: group.sortOrder ?? 0,
     itemCount,
   };

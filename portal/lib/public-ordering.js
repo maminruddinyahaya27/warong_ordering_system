@@ -73,14 +73,10 @@ export async function buildPublicMenu(tenant, table) {
     .map((group) => ({
       name: group.name,
       count: counts.get(group.name) || 0,
-      // Groups the customer can add on when they order from this group.
-      addOns: Array.isArray(group.addOns) ? group.addOns : [],
     }))
     .filter((group) => group.count > 0);
   const ungrouped = counts.get(UNGROUPED_LABEL) || 0;
-  if (ungrouped > 0) {
-    groupList.push({ name: UNGROUPED_LABEL, count: ungrouped, addOns: [] });
-  }
+  if (ungrouped > 0) groupList.push({ name: UNGROUPED_LABEL, count: ungrouped });
 
   return {
     restaurant: settings?.restaurantName || tenant.name,
@@ -95,6 +91,7 @@ export async function buildPublicMenu(tenant, table) {
       station: item.station || '',
       group: item.groupName || UNGROUPED_LABEL,
       options: item.options || '',
+      addOnFor: Array.isArray(item.addOnFor) ? item.addOnFor : [],
     })),
   };
 }

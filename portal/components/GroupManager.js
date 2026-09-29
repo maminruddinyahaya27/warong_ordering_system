@@ -31,7 +31,6 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
         description: group.description || '',
         color: group.color || '',
         station: group.station || '',
-        addOns: Array.isArray(group.addOns) ? group.addOns : [],
       }
     );
   }
@@ -50,8 +49,7 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
       draft.name !== group.name ||
       draft.description !== (group.description || '') ||
       draft.color !== (group.color || '') ||
-      draft.station !== (group.station || '') ||
-      (draft.addOns || []).join('|') !== (group.addOns || []).join('|')
+      draft.station !== (group.station || '')
     );
   }
 
@@ -173,19 +171,6 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
     }
   }
 
-  function addAddOn(group, name) {
-    const draft = draftFor(group);
-    if ((draft.addOns || []).includes(name)) return;
-    setDraft(group, { addOns: [...(draft.addOns || []), name] });
-  }
-
-  function removeAddOn(group, name) {
-    const draft = draftFor(group);
-    setDraft(group, {
-      addOns: (draft.addOns || []).filter((entry) => entry !== name),
-    });
-  }
-
   async function bulkDeleteGroups() {
     if (
       !window.confirm(
@@ -266,7 +251,6 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
                     <th>Description</th>
                     <th>Colour</th>
                     <th>Station</th>
-                    <th>Add-ons</th>
                     <th>Items</th>
                     <th>If deleted, move items to</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
@@ -382,60 +366,6 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
                                 {station}
                               </option>
                             ))}
-                          </select>
-                        </td>
-                        <td>
-                          <div
-                            className="inline"
-                            style={{ flexWrap: 'wrap', gap: 6, marginBottom: 6 }}
-                          >
-                            {draft.addOns.length === 0 ? (
-                              <span className="muted small">None</span>
-                            ) : (
-                              draft.addOns.map((name) => (
-                                <span key={name} className="badge">
-                                  {name}
-                                  <button
-                                    type="button"
-                                    aria-label={`Remove ${name} from ${group.name}`}
-                                    disabled={rowBusy}
-                                    onClick={() => removeAddOn(group, name)}
-                                    style={{
-                                      marginLeft: 6,
-                                      border: 0,
-                                      background: 'transparent',
-                                      cursor: 'pointer',
-                                      color: 'inherit',
-                                    }}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))
-                            )}
-                          </div>
-                          <select
-                            value=""
-                            disabled={rowBusy}
-                            onChange={(event) => {
-                              if (event.target.value) {
-                                addAddOn(group, event.target.value);
-                              }
-                            }}
-                            aria-label={`Add an add-on group to ${group.name}`}
-                          >
-                            <option value="">+ add add-on group…</option>
-                            {groups
-                              .filter(
-                                (entry) =>
-                                  entry.id !== group.id &&
-                                  !draft.addOns.includes(entry.name)
-                              )
-                              .map((entry) => (
-                                <option key={entry.id} value={entry.name}>
-                                  {entry.name}
-                                </option>
-                              ))}
                           </select>
                         </td>
                         <td>

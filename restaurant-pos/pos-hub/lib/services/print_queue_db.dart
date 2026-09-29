@@ -9,7 +9,7 @@ class PrintQueueDb {
   static final PrintQueueDb instance = PrintQueueDb._internal();
   PrintQueueDb._internal();
 
-  static const int _version = 13;
+  static const int _version = 14;
 
   /// Tests set this to `inMemoryDatabasePath` so each test file gets its own
   /// database instead of sharing the on-disk one (which made state-dependent
@@ -94,6 +94,10 @@ class PrintQueueDb {
       if (oldV < 13) {
         await db.execute(
             "ALTER TABLE products ADD COLUMN add_on_for TEXT NOT NULL DEFAULT ''");
+      }
+      if (oldV < 14) {
+        await db.execute(
+            'ALTER TABLE order_items ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
       }
     });
   }
@@ -186,7 +190,8 @@ class PrintQueueDb {
         unit_price REAL,
         line_total REAL,
         station TEXT,
-        note TEXT
+        note TEXT,
+        paid INTEGER NOT NULL DEFAULT 0
       )
     ''');
   }
@@ -513,6 +518,7 @@ class PrintQueueDb {
           'line_total': item.lineTotal,
           'station': item.station,
           'note': item.note,
+          'paid': item.paid ? 1 : 0,
         });
       }
       await batch.commit(noResult: true);
@@ -559,6 +565,7 @@ class PrintQueueDb {
       'line_total': item.lineTotal,
       'station': item.station,
       'note': item.note,
+      'paid': item.paid ? 1 : 0,
     });
   }
 
@@ -570,6 +577,31 @@ class PrintQueueDb {
       {'qty': qty, 'line_total': lineTotal},
       where: 'id = ?',
       whereArgs: [itemId],
+    );
+  }
+
+  /// Marks the given order lines as covered by a part payment, so the cashier
+  /// sees them struck through the next time the item picker opens.
+  Future<void> markOrderItemsPaid(int orderId, List<int> itemIds) async {
+    if (itemIds.isEmpty) return;
+    final db = await database;
+    final placeholders = List.filled(itemIds.length, '?').join(',');
+    await db.update(
+      'order_items',
+      {'paid': 1},
+      where: 'order_id = ? AND id IN ($placeholders)',
+      whereArgs: [orderId, ...itemIds],
+    );
+  }
+
+  /// Marks every line of an order paid (used when the bill is settled in full).
+  Future<void> markAllOrderItemsPaid(int orderId) async {
+    final db = await database;
+    await db.update(
+      'order_items',
+      {'paid': 1},
+      where: 'order_id = ?',
+      whereArgs: [orderId],
     );
   }
 

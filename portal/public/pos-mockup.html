@@ -193,6 +193,17 @@
   .change.ok{color:var(--ok)} .change.bad{color:var(--err)}
   .modal-actions{display:flex;gap:8px;margin-top:16px}
   .modal-actions .btn{width:auto;flex:1}
+
+  /* ---------- partial payment picker ---------- */
+  .pick{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+  .pick:last-child{border-bottom:0}
+  .pick input{width:18px;height:18px}
+  .pick .pn{flex:1;font-weight:600;font-size:14px}
+  .pick .pa{font-weight:700;font-size:13px}
+  .pick .pq{color:var(--muted);font-size:12px}
+  .pick-child{display:flex;align-items:center;gap:10px;padding:2px 2px 8px 34px;
+    font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+  .pick-child .pa{margin-left:auto;font-weight:600;color:var(--text)}
   /* thermal-receipt preview: white paper on the dark UI */
   .receipt{background:#fff;color:#111;border-radius:8px;padding:14px;
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -374,6 +385,32 @@
   </div>
 </div>
 
+<!-- charge mode -->
+<div class="modal hidden" id="modeModal">
+  <div class="modal-card" style="max-width:380px">
+    <h2 id="modeTitle">Charge</h2>
+    <p class="muted small" style="margin:0 0 8px">Pay the whole bill, or pick the items to pay now.</p>
+    <div class="modal-actions">
+      <button class="btn secondary" id="modeCancel">Cancel</button>
+      <button class="btn" id="modeFull">Full</button>
+      <button class="btn secondary" id="modePartial">Partial</button>
+    </div>
+  </div>
+</div>
+
+<!-- partial payment picker -->
+<div class="modal hidden" id="partialModal">
+  <div class="modal-card" style="max-width:480px">
+    <h2 style="font-size:16px">Select items to pay</h2>
+    <div id="partialList" style="max-height:48vh;overflow:auto"></div>
+    <div class="muted small" id="partialTotal" style="margin-top:12px"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="partialCancel">Back</button>
+      <button class="btn" id="partialContinue">Continue</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="receiptModal">
   <div class="modal-card" style="max-width:400px">
     <h2 style="font-size:15px" id="receiptTitle">Receipt</h2>
@@ -493,6 +530,7 @@
         station: String(item.station || 'KITCHEN'),
         category: String(item.category || item.group || 'Menu'),
         color: String(item.groupColor || item.color || ''),
+        addOnFor: Array.isArray(item.addOnFor) ? item.addOnFor.slice() : [],
         available: item.available !== false
       };
     }).filter(function (item) { return item.name; });
@@ -966,10 +1004,15 @@
       'Server: ' + order.server,
       rule
     ];
-    order.items.forEach(function (item) {
-      lines.push(item.name);
-      lines.push(padRow('  ' + item.qty + ' x ' + priceOf(item.name).toFixed(2),
-        (priceOf(item.name) * item.qty).toFixed(2)));
+    // Numbered items, with each add-on nested under the item it came with.
+    chargeEntries(order).forEach(function (line, index) {
+      lines.push(padRow((index + 1) + '. ' + line.name + ' x ' + line.qty,
+        (line.price * line.qty).toFixed(2)));
+      line.children.forEach(function (child) {
+        lines.push(padRow('    - ' + child.name +
+          (child.qty > 1 ? ' x ' + child.qty : ''),
+          (child.price * child.qty).toFixed(2)));
+      });
     });
     lines.push(rule);
     lines.push(padRow('Subtotal', state.currency + t.subtotal.toFixed(2)));
@@ -1042,6 +1085,74 @@
 
   // -------------------------------------------------------------- payment
 
+  function priceCategory(name) {
+    var menu = state.menu.filter(function (m) { return m.name === name; })[0];
+    return menu ? menu.category : '';
+  }
+
+  /// The bill's items (or the cart's lines) as flat rows to group.
+  function chargeRows(order) {
+    if (order) {
+      return order.items.map(function (item, index) {
+        return {
+          name: item.name,
+          qty: item.qty,
+          category: priceCategory(item.name),
+          price: priceOf(item.name),
+          index: index
+        };
+      });
+    }
+    return cartLines().map(function (line) {
+      return {
+        name: line.item.name,
+        qty: line.qty,
+        category: line.item.category,
+        price: line.item.price,
+        sku: line.item.sku
+      };
+    });
+  }
+
+  /// Numbers the rows and nests each add-on under the item it was ordered with
+  /// — the same rule the kitchen ticket uses.
+  function groupEntries(rows) {
+    var mains = [];
+    rows.forEach(function (row) {
+      var menu = state.menu.filter(function (m) { return m.name === row.name; })[0];
+      var parents = (menu && menu.addOnFor) || [];
+      var parent = -1;
+      if (parents.length) {
+        for (var i = mains.length - 1; i >= 0; i -= 1) {
+          if (parents.indexOf(mains[i].category) !== -1) { parent = i; break; }
+        }
+      }
+      if (parent === -1) {
+        mains.push({
+          name: row.name,
+          qty: row.qty,
+          category: row.category,
+          price: row.price,
+          indices: row.index !== undefined ? [row.index] : [],
+          skus: row.sku ? [row.sku] : [],
+          children: []
+        });
+      } else {
+        mains[parent].children.push(row);
+        if (row.index !== undefined) mains[parent].indices.push(row.index);
+        if (row.sku) mains[parent].skus.push(row.sku);
+      }
+    });
+    mains.forEach(function (line) {
+      var total = line.price * line.qty;
+      line.children.forEach(function (child) { total += child.price * child.qty; });
+      line.amount = round2(total);
+    });
+    return mains;
+  }
+
+  function chargeEntries(order) { return groupEntries(chargeRows(order)); }
+
   function openPayment(orderOrNull) {
     if (orderOrNull) {
       var t = orderTotals(orderOrNull);
@@ -1049,28 +1160,124 @@
         order: orderOrNull,
         appendCart: false,
         total: t.total,
+        subtotal: t.subtotal,
+        items: chargeEntries(orderOrNull),
         method: 'cash',
-        tendered: t.total
+        tendered: t.total,
+        partial: false,
+        selected: {}
       };
-      $('payTitle').textContent = 'Charge ' + orderOrNull.no + ' · ' + money(t.total);
+      $('modeTitle').textContent = 'Charge ' + orderOrNull.no + ' · ' + money(t.total);
     } else {
       var c = cartTotals('cash');
       if (!cartLines().length) { toast('Cart is empty'); return; }
       // If this table already has an open bill, the cart joins it and the
       // whole bill is settled on one receipt.
       var bill = openTableOrder($('table').value);
-      var total = bill ? round2(orderTotals(bill).total + c.total) : c.total;
+      var full = bill ? orderTotals(bill) : { total: 0, subtotal: 0 };
+      var total = round2(full.total + c.total);
       state.pay = {
         order: bill,
         appendCart: !!bill,
         total: total,
+        subtotal: round2(full.subtotal + c.subtotal),
+        items: bill ? [] : chargeEntries(null),
         method: 'cash',
-        tendered: total
+        tendered: total,
+        partial: false,
+        selected: {}
       };
-      $('payTitle').textContent = 'Charge ' + money(total) +
+      $('modeTitle').textContent = 'Charge ' + money(total) +
         (bill ? ' · ' + bill.no + ' (whole bill)' : '');
     }
+    $('payTitle').textContent = $('modeTitle').textContent;
+    $('modeModal').classList.remove('hidden');
+  }
+
+  /// Full / Partial, chosen from the charge popup.
+  function startCharge(mode) {
+    if (!state.pay) return;
+    $('modeModal').classList.add('hidden');
+    if (mode === 'partial') { openPartial(); return; }
+    state.pay.partial = false;
     setPaymentMethod('cash');
+    $('payModal').classList.remove('hidden');
+  }
+
+  /// Joins the counter cart to the open bill, so the picker lists one bill.
+  function mergeCartIntoBill() {
+    if (!state.pay || !state.pay.order || !state.pay.appendCart) return;
+    appendCartToOrder(state.pay.order);
+    state.pay.appendCart = false;
+    state.cart = {};
+    $('note').value = '';
+    var t = orderTotals(state.pay.order);
+    state.pay.total = t.total;
+    state.pay.subtotal = t.subtotal;
+    state.pay.items = chargeEntries(state.pay.order);
+  }
+
+  function openPartial() {
+    mergeCartIntoBill();
+    state.pay.partial = true;
+    state.pay.selected = {};
+    state.pay.items = chargeEntries(state.pay.order);
+    var list = state.pay.items;
+    $('partialList').innerHTML = list.length
+      ? list.map(function (it, index) {
+          var kids = it.children.map(function (child) {
+            return '<div class="pick-child">- ' + esc(child.name) +
+              (child.qty > 1 ? ' × ' + child.qty : '') +
+              '<span class="pa">' + money(child.price * child.qty) + '</span></div>';
+          }).join('');
+          return '<label class="pick">' +
+            '<input type="checkbox" data-key="' + index + '" />' +
+            '<span class="pn">' + (index + 1) + '. ' + esc(it.name) +
+            ' <span class="pq">× ' + it.qty + '</span></span>' +
+            '<span class="pa">' + money(it.amount) + '</span>' +
+            '</label>' + kids;
+        }).join('')
+      : '<div class="muted small">Nothing to pay</div>';
+
+    Array.prototype.forEach.call(
+      $('partialList').querySelectorAll('input[type=checkbox]'),
+      function (box) {
+        box.addEventListener('change', function () {
+          state.pay.selected[box.getAttribute('data-key')] = box.checked;
+          updatePartialTotal();
+        });
+      }
+    );
+    updatePartialTotal();
+    $('partialModal').classList.remove('hidden');
+  }
+
+  function partialChecked() {
+    return state.pay.items.filter(function (it, index) { return state.pay.selected[index]; });
+  }
+
+  /// Tax is shared out in proportion to the picked items.
+  function partialAmount() {
+    var checked = partialChecked();
+    if (!state.pay.subtotal || state.pay.subtotal <= 0) return 0;
+    var picked = checked.reduce(function (sum, it) { return sum + it.amount; }, 0);
+    return round2(state.pay.total * (picked / state.pay.subtotal));
+  }
+
+  function updatePartialTotal() {
+    var checked = partialChecked();
+    var amount = partialAmount();
+    state.pay.partialAmount = amount;
+    $('partialTotal').textContent =
+      'Selected ' + money(amount) + ' · ' + checked.length + ' line(s) of ' + money(state.pay.total);
+    $('partialContinue').disabled = checked.length === 0;
+  }
+
+  function continuePartial() {
+    state.pay.total = state.pay.partialAmount || 0;
+    $('partialModal').classList.add('hidden');
+    setPaymentMethod('cash');
+    $('payTitle').textContent = 'Partial · ' + money(state.pay.total);
     $('payModal').classList.remove('hidden');
   }
 
@@ -1095,7 +1302,9 @@
     var el = $('changeText');
     el.textContent = change >= 0 ? 'Change: ' + money(change) : 'Short by ' + money(-change);
     el.className = 'change ' + (change >= 0 ? 'ok' : 'bad');
-    $('payConfirm').disabled = state.pay.method === 'cash' && change < -0.0001;
+    // A part payment is allowed to be short by design.
+    $('payConfirm').disabled =
+      !state.pay.partial && state.pay.method === 'cash' && change < -0.0001;
   }
 
   function confirmPayment() {
@@ -1109,6 +1318,67 @@
     var tendered = state.pay.method === 'cash'
       ? (Number($('tendered').value) || state.pay.payable)
       : state.pay.payable;
+
+    // Partial: only the picked items are paid; the rest of the bill stays open.
+    if (state.pay.partial) {
+      var checked = partialChecked();
+      var amount = state.pay.payable;
+      if (state.pay.order) {
+        var drop = {};
+        checked.forEach(function (entry) {
+          entry.indices.forEach(function (index) { drop[index] = true; });
+        });
+        var remaining = state.pay.order.items.filter(function (_, index) { return !drop[index]; });
+        state.pay.order.items = remaining;
+        state.pay.order.paid = round2((state.pay.order.paid || 0) + amount);
+        if (remaining.length === 0) {
+          state.pay.order.status = 'PAID';
+          state.pay.order.method = state.pay.method;
+          state.pay.order.tendered = tendered;
+          state.pay.order.change = round2(tendered - state.pay.payable);
+          state.pay.order.paidAt = Date.now();
+          toast(state.pay.order.no + ' paid — receipt printing', 'ok');
+        } else {
+          toast('Part payment ' + money(amount) + ' · left ' +
+            money(orderTotals(state.pay.order).total), 'ok');
+        }
+        saveOrders();
+      } else {
+        // Cart: the picked entries (with their add-ons) are paid, the rest
+        // stays in the cart.
+        var paidItems = [];
+        var paidSkus = [];
+        checked.forEach(function (entry) {
+          paidItems.push({ name: entry.name, qty: entry.qty });
+          entry.skus.forEach(function (sku) { paidSkus.push(sku); });
+          entry.children.forEach(function (child) {
+            paidItems.push({ name: child.name, qty: child.qty });
+            if (child.sku) paidSkus.push(child.sku);
+          });
+        });
+        var partialOrder = {
+          no: nextOrderNo($('table').value),
+          channel: 'counter',
+          status: 'PAID',
+          table: $('table').value.trim() || '—',
+          server: $('server').value.trim() || 'Cashier',
+          orderType: state.orderType,
+          method: state.pay.method,
+          tendered: tendered,
+          change: round2(tendered - state.pay.payable),
+          paidAt: Date.now(),
+          items: paidItems
+        };
+        state.orders.push(partialOrder);
+        paidSkus.forEach(function (sku) { delete state.cart[sku]; });
+        saveOrders();
+        toast(partialOrder.no + ' part paid — receipt printing', 'ok');
+      }
+      state.pay = null;
+      $('payModal').classList.add('hidden');
+      renderAll();
+      return;
+    }
 
     // Merge the counter cart into the table's open bill first, so the whole
     // table is settled on one receipt.
@@ -1271,6 +1541,18 @@
       $('payModal').classList.add('hidden');
     });
     $('payConfirm').addEventListener('click', confirmPayment);
+
+    $('modeCancel').addEventListener('click', function () {
+      state.pay = null;
+      $('modeModal').classList.add('hidden');
+    });
+    $('modeFull').addEventListener('click', function () { startCharge('full'); });
+    $('modePartial').addEventListener('click', function () { startCharge('partial'); });
+    $('partialCancel').addEventListener('click', function () {
+      $('partialModal').classList.add('hidden');
+      $('modeModal').classList.remove('hidden');
+    });
+    $('partialContinue').addEventListener('click', continuePartial);
 
     // Settings (which now holds the hub controls) is reached from the gear.
     $('gear').addEventListener('click', function () {

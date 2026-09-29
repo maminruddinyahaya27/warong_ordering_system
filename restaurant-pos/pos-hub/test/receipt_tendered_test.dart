@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -81,5 +83,121 @@ void main() {
     expect(receipt, contains('Cash'));
     expect(receipt, contains('2.20'));
     expect(receipt, isNot(contains('Change')));
+  });
+
+  test('a part payment leaves a balance and keeps the bill open', () async {
+    final cashier = CashierService.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '7',
+      items: [line('Nasi Lemak Ayam', 10.0, 2)],
+    );
+    // 20.00 + 2.00 tax = 22.00
+    expect(order.total, closeTo(22.00, 0.001));
+
+    // Card for part of the bill.
+    final part = await cashier.addPayment(order.id!, method: 'card', amount: 5.0);
+    expect(part.isSettled, isFalse);
+    expect(part.paid, closeTo(5.0, 0.001));
+    expect(part.balance, closeTo(17.0, 0.001));
+
+    // Cash for less than the balance is also a part payment.
+    final partTwo =
+        await cashier.addPayment(order.id!, method: 'cash', tendered: 10.0);
+    expect(partTwo.isSettled, isFalse);
+    expect(partTwo.paid, closeTo(15.0, 0.001));
+    expect(partTwo.balance, closeTo(7.0, 0.001));
+
+    // The rest settles it.
+    final settled = await cashier.addPayment(
+      order.id!,
+      method: 'cash',
+      tendered: 7.0,
+    );
+    expect(settled.isSettled, isTrue);
+    expect(settled.balance, closeTo(0, 0.001));
+  });
+
+  test('part payment can mark the lines it covered as paid', () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '8',
+      items: [
+        line('Roti Kosong', 1.5, 1),
+        line('Kari Kambing', 8.0, 1),
+        line('Teh O (Panas)', 2.0, 1),
+      ],
+    );
+
+    // Pay the first line, marking just that one.
+    final first = order.items.first;
+    expect(first.id, isNotNull);
+    await db.markOrderItemsPaid(order.id!, [first.id!]);
+
+    final afterFirst = (await db.getOrder(order.id!))!;
+    expect(afterFirst.items.first.paid, isTrue);
+    expect(afterFirst.items[1].paid, isFalse);
+
+    // Settling the rest marks everything.
+    await db.markAllOrderItemsPaid(order.id!);
+    final all = (await db.getOrder(order.id!))!;
+    expect(all.items.every((item) => item.paid), isTrue);
+  });
+
+  test('a part payment receipt lists only the items paid', () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '10',
+      items: [
+        line('Roti Kosong', 1.5, 1),
+        line('Kari Kambing', 8.0, 1),
+        line('Teh O (Panas)', 2.0, 1),
+      ],
+    );
+
+    final first = order.items.first;
+    await cashier.printPartialReceipt(order, [first.id!], 1.65);
+
+    final jobs = await db.getAllJobs();
+    final receipt = jobs.firstWhere((job) => job.kind == 'receipt');
+    expect(receipt.payload, contains('Roti Kosong'));
+    expect(receipt.payload, isNot(contains('Kari Kambing')),
+        reason: 'only what the customer paid this round');
+    expect(receipt.payload, isNot(contains('Teh O')));
+    expect(receipt.payload, contains('"balance"'));
+  });
+
+  // Kept last: it changes the stored tax rate for the rest of the file.
+  test('a partial receipt carries no tax when the rate is zero', () async {
+    await SettingsStore.instance.save({'tax_rate': '0'});
+    await SettingsStore.instance.load();
+
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '11',
+      items: [line('Roti Kosong', 1.5, 2)],
+    );
+    // No tax configured anywhere in the restaurant.
+    expect(order.tax, 0);
+
+    final first = order.items.first;
+    await cashier.printPartialReceipt(order, [first.id!], first.lineTotal);
+
+    final receipt =
+        (await db.getAllJobs()).firstWhere((job) => job.kind == 'receipt');
+    final payload = jsonDecode(receipt.payload) as Map<String, dynamic>;
+    expect(payload['tax'], 0);
+    expect(payload['subtotal'], closeTo(3.0, 0.001));
+    expect(payload['total'], closeTo(3.0, 0.001));
   });
 }

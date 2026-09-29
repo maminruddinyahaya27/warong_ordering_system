@@ -127,14 +127,23 @@ class EscPosRenderer {
     out.addAll(generator.hr());
 
     final items = (data['items'] as List?) ?? const [];
+    var itemNumber = 0;
     for (final raw in items) {
       if (raw is! Map) continue;
       final name = (raw['name'] ?? '').toString();
-      final qty = raw['qty'] ?? 1;
+      final qty = _toDouble(raw['qty']);
+      final qtyText = _trimNumber(qty);
       final price = _money(raw['price']);
       final amount = _money(raw['line']);
-      line(name);
-      line(_row('  $qty x $price', amount));
+      if (raw['addOn'] == true) {
+        // An add-on sits under the item it was ordered with.
+        line('    - $name${qty > 1 ? ' x $qtyText' : ''}');
+        line(_row('      $qtyText x $price', amount));
+      } else {
+        itemNumber += 1;
+        line('$itemNumber. $name x $qtyText');
+        line(_row('  $qtyText x $price', amount));
+      }
     }
     out.addAll(generator.hr());
 
@@ -152,6 +161,12 @@ class EscPosRenderer {
 
     line(_row('TOTAL', '$currency${_money(data['total'])}'),
         style: const PosStyles(bold: true));
+
+    // Part payments print what is still owed.
+    final balance = _toDouble(data['balance']);
+    if (balance > 0) {
+      line(_row('Balance', '$currency${_money(balance)}'));
+    }
 
     final payment = (data['payment'] ?? '').toString();
     final payments = (data['payments'] as List?) ?? const [];

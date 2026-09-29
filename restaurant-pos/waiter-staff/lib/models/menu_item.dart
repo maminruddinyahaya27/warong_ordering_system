@@ -29,6 +29,11 @@ class MenuItem {
 
   bool get isDrink => options.toLowerCase().contains('drink');
 
+  /// Whether to ask for these levels (from the portal's per-item options, e.g.
+  /// hot water = drink,sugar with no ice).
+  bool get askSugar => options.toLowerCase().contains('sugar');
+  bool get askIce => options.toLowerCase().contains('ice');
+
   factory MenuItem.fromJson(Map<String, dynamic> json) {
     return MenuItem(
       name: json['name']?.toString() ?? '',
