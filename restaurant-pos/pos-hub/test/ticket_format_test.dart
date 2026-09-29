@@ -195,7 +195,9 @@ void main() {
     );
 
     final receipt = await CashierService.instance.receiptPreview(order);
-    expect(receipt, contains('1. Roti Kosong x 1'), reason: receipt);
-    expect(receipt, contains('    - Kari Kambing'), reason: receipt);
+    expect(receipt, contains('1. Roti Kosong'));
+    expect(receipt, contains('   1 X 2.00'));
+    expect(receipt, contains('    - Kari Kambing'));
+    expect(receipt, contains('       1 X 2.00'));
   });
 }

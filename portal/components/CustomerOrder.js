@@ -9,6 +9,13 @@ function isDrink(item) {
   return (item?.options || '').toLowerCase().includes('drink');
 }
 
+function optionHas(item, tag) {
+  return (item?.options || '')
+    .toLowerCase()
+    .split(',')
+    .includes(tag);
+}
+
 let lineSequence = 0;
 
 /// Every line gets its own id: an item ordered with add-ons must stay separate
@@ -24,12 +31,12 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
   const [loading, setLoading] = useState(true);
   const [activeGroup, setActiveGroup] = useState('');
   // Cart lines: the same item can appear several times when the drink options
-  // differ (e.g. one Teh O "Less sugar, Normal ice" and one all-normal).
+  // differ, or when it is ordered with different add-ons.
   const [cart, setCart] = useState([]);
-  const [drinkOptions, setDrinkOptions] = useState({});
   const [note, setNote] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
-  const [bundle, setBundle] = useState(null);
+  // One dialog at a time: a drink's sugar/ice, or an item's quantity + add-ons.
+  const [modal, setModal] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState(null);
 
@@ -65,38 +72,19 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
     [data, activeGroup]
   );
 
-  function optionsFor(sku) {
-    return drinkOptions[sku] || {};
-  }
-
-  function optionHas(item, tag) {
-    return (item?.options || '')
-      .toLowerCase()
-      .split(',')
-      .includes(tag);
-  }
-
-  function sugarOf(source) {
-    return source?.sugar || SUGAR_LEVELS[0];
-  }
-
-  function iceOf(source) {
-    return source?.ice || ICE_LEVELS[0];
-  }
-
   /// The note printed for a drink: only the levels this item asks for, so a hot
   /// drink (drink,sugar) never mentions ice.
-  function drinkNote(item, source) {
+  function drinkNoteFor(item, sugar, ice) {
     return [
-      optionHas(item, 'sugar') ? sugarOf(source) : null,
-      optionHas(item, 'ice') ? iceOf(source) : null,
+      optionHas(item, 'sugar') ? sugar : null,
+      optionHas(item, 'ice') ? ice : null,
     ]
       .filter(Boolean)
       .join(', ');
   }
 
   function lineNote(line) {
-    return isDrink(line.item) ? drinkNote(line.item, line) : '';
+    return isDrink(line.item) ? line.note : '';
   }
 
   /// Menu items that are add-ons for the given item's group.
@@ -106,41 +94,96 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
     );
   }
 
-  /// Tapping an item with add-ons opens the bundle sheet: pick the quantity,
-  /// then any add-ons. Plain items are added straight away.
+  /// Same behaviour as the Hub and the waiter: tap an item and a dialog asks
+  /// what it needs. Plain items are added straight away.
   function startAdd(item) {
     const options = addOnOptionsFor(item);
-    if (options.length === 0) {
-      add(item, 1);
+    if (options.length > 0) {
+      setModal({
+        type: 'bundle',
+        item,
+        options,
+        parentQty: 1,
+        qty: {},
+      });
       return;
     }
-    setBundle({ parent: item, options, parentQty: 1, qty: {} });
+    if (isDrink(item) && (optionHas(item, 'sugar') || optionHas(item, 'ice'))) {
+      setModal({
+        type: 'drink',
+        item,
+        sugar: SUGAR_LEVELS[0],
+        ice: ICE_LEVELS[0],
+      });
+      return;
+    }
+    add(item, 1);
+  }
+
+  function closeModal() {
+    setModal(null);
+  }
+
+  function confirmDrink() {
+    if (!modal) return;
+    const item = modal.item;
+    add(item, 1, { note: drinkNoteFor(item, modal.sugar, modal.ice) });
+    closeModal();
   }
 
   function confirmBundle() {
-    if (!bundle) return;
-    add(bundle.parent, bundle.parentQty, { merge: false });
-    for (const option of bundle.options) {
-      const qty = bundle.qty[option.sku] || 0;
-      if (qty > 0) add(option, qty, { merge: false });
-    }
-    setBundle(null);
+    if (!modal) return;
+    // One cart entry per bundle: the parent line, with its add-ons linked to it
+    // so the cart shows them nested (as the printed ticket does).
+    const parentId = newLineId(modal.item.sku, '');
+    setCart((previous) => {
+      const next = [
+        ...previous,
+        {
+          id: parentId,
+          item: modal.item,
+          qty: modal.parentQty,
+          note: '',
+          parentId: '',
+        },
+      ];
+      for (const option of modal.options) {
+        const qty = modal.qty[option.sku] || 0;
+        if (qty <= 0) continue;
+        next.push({
+          id: newLineId(option.sku, ''),
+          item: option,
+          qty,
+          note: '',
+          parentId,
+        });
+      }
+      return next;
+    });
+    closeModal();
   }
 
-  function add(item, qty, { merge = true } = {}) {
-    const sugar = isDrink(item) ? sugarOf(optionsFor(item.sku)) : '';
-    const ice = isDrink(item) ? iceOf(optionsFor(item.sku)) : '';
-    const note = isDrink(item) ? drinkNote(item, { sugar, ice }) : '';
+  function add(item, qty, { merge = true, note: lineNoteValue, parentId = '' } = {}) {
+    const noteValue = lineNoteValue ?? '';
     setCart((previous) => {
       const index = merge
         ? previous.findIndex(
-            (line) => line.item.sku === item.sku && lineNote(line) === note
+            (line) =>
+              line.item.sku === item.sku &&
+              line.note === noteValue &&
+              !line.parentId
           )
         : -1;
       if (index === -1) {
         return [
           ...previous,
-          { id: newLineId(item.sku, note), item, qty, sugar, ice },
+          {
+            id: newLineId(item.sku, noteValue),
+            item,
+            qty,
+            note: noteValue,
+            parentId,
+          },
         ];
       }
       const next = [...previous];
@@ -161,62 +204,81 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
     });
   }
 
+  /// Removing an item also removes the add-ons ordered with it.
   function removeLine(line) {
-    setCart((previous) => previous.filter((entry) => entry.id !== line.id));
-  }
-
-  /// Changes one cart line's sugar/ice, merging with a sibling that ends up the
-  /// same (so two identical drinks stay one line).
-  function changeLineOption(line, kind, value) {
-    setCart((previous) => {
-      const index = previous.findIndex((entry) => entry.id === line.id);
-      if (index === -1) return previous;
-      const sugar = kind === 'sugar' ? value : line.sugar;
-      const ice = kind === 'ice' ? value : line.ice;
-      const note = drinkNote(line.item, { sugar, ice });
-      const next = [...previous];
-      const sibling = next.findIndex(
-        (entry, position) =>
-          position !== index &&
-          entry.item.sku === line.item.sku &&
-          lineNote(entry) === note
-      );
-      if (sibling !== -1) {
-        next[sibling] = {
-          ...next[sibling],
-          qty: next[sibling].qty + next[index].qty,
-        };
-        next.splice(index, 1);
-      } else {
-        next[index] = { ...next[index], sugar, ice };
-      }
-      return next;
-    });
-  }
-
-  function optionChips(current, onChange, askSugar, askIce) {
-    if (!askSugar && !askIce) return null;
-    const row = (label, options, selected, kind) => (
-      <div className="inline" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <span className="muted small" style={{ minWidth: 42 }}>
-          {label}
-        </span>
-        {options.map((level) => (
-          <button
-            key={level}
-            type="button"
-            className={`btn btn-sm${selected === level ? ' btn-primary' : ''}`}
-            onClick={() => onChange(kind, level)}
-          >
-            {level}
-          </button>
-        ))}
-      </div>
+    setCart((previous) =>
+      previous.filter(
+        (entry) => entry.id !== line.id && entry.parentId !== line.id
+      )
     );
+  }
+
+  /// One cart row; `indent` marks an add-on sitting under its item.
+  function cartRow(line, indent) {
     return (
-      <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-        {askSugar ? row('Sugar', SUGAR_LEVELS, sugarOf(current), 'sugar') : null}
-        {askIce ? row('Ice', ICE_LEVELS, iceOf(current), 'ice') : null}
+      <div
+        key={line.id}
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 10,
+          padding: indent ? '6px 0' : '10px 0',
+          paddingLeft: indent ? 18 : 0,
+          borderBottom: '1px solid var(--line-soft)',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0, paddingRight: 4 }}>
+          <div
+            style={{
+              fontWeight: indent ? 500 : 600,
+              marginBottom: 3,
+              lineHeight: 1.3,
+              color: indent ? 'var(--muted)' : undefined,
+            }}
+          >
+            {indent ? `- ${line.item.name}` : line.item.name}
+          </div>
+          <div className="muted small">
+            {currency}
+            {Number(line.item.price).toFixed(2)} each
+          </div>
+          {lineNote(line) ? (
+            <div className="muted small">{lineNote(line)}</div>
+          ) : null}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="inline" style={{ gap: 6, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => changeLineQty(line, -1)}
+            >
+              −
+            </button>
+            <span style={{ minWidth: 18, textAlign: 'center' }}>
+              {line.qty}
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => changeLineQty(line, 1)}
+            >
+              +
+            </button>
+          </div>
+          <div style={{ marginTop: 6, fontWeight: 600 }}>
+            {currency}
+            {(line.item.price * line.qty).toFixed(2)}
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-danger"
+            style={{ marginTop: 6 }}
+            onClick={() => removeLine(line)}
+          >
+            Remove
+          </button>
+        </div>
       </div>
     );
   }
@@ -244,7 +306,6 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
       if (!response.ok) throw new Error(json.error || 'Could not send the order');
       setPlaced(json);
       setCart([]);
-      setDrinkOptions({});
       setNote('');
       setCartOpen(false);
     } catch (submitError) {
@@ -340,7 +401,7 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                     key={item.sku}
                     style={{
                       display: 'flex',
-                      alignItems: 'flex-start',
+                      alignItems: 'center',
                       gap: 12,
                       padding: '14px 4px',
                       borderBottom: '1px solid rgba(128,128,128,0.14)',
@@ -360,21 +421,6 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                         {currency}
                         {Number(item.price).toFixed(2)}
                       </div>
-                      {isDrink(item)
-                        ? optionChips(
-                            optionsFor(item.sku),
-                            (kind, value) =>
-                              setDrinkOptions((previous) => ({
-                                ...previous,
-                                [item.sku]: {
-                                  ...previous[item.sku],
-                                  [kind]: value,
-                                },
-                              })),
-                            optionHas(item, 'sugar'),
-                            optionHas(item, 'ice')
-                          )
-                        : null}
                     </div>
                     <div style={{ paddingTop: 2, textAlign: 'center' }}>
                       <button
@@ -488,79 +534,21 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                   Your cart is empty.
                 </div>
               ) : (
-                cart.map((line) => (
-                  <div
-                    key={line.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 10,
-                      padding: '10px 0',
-                      borderBottom: '1px solid var(--line-soft)',
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0, paddingRight: 4 }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          marginBottom: 3,
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        {line.item.name}
-                      </div>
-                      <div className="muted small">
-                        {currency}
-                        {Number(line.item.price).toFixed(2)} each
-                      </div>
-                      {isDrink(line.item)
-                        ? optionChips(
-                            { sugar: line.sugar, ice: line.ice },
-                            (kind, value) =>
-                              changeLineOption(line, kind, value),
-                            optionHas(line.item, 'sugar'),
-                            optionHas(line.item, 'ice')
-                          )
-                        : null}
+                // Add-ons sit under the item they were ordered with.
+                cart
+                  .filter(
+                    (line) =>
+                      !line.parentId ||
+                      !cart.some((other) => other.id === line.parentId)
+                  )
+                  .map((parent) => (
+                    <div key={parent.id}>
+                      {cartRow(parent, false)}
+                      {cart
+                        .filter((child) => child.parentId === parent.id)
+                        .map((child) => cartRow(child, true))}
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div
-                        className="inline"
-                        style={{ gap: 6, alignItems: 'center' }}
-                      >
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => changeLineQty(line, -1)}
-                        >
-                          −
-                        </button>
-                        <span style={{ minWidth: 18, textAlign: 'center' }}>
-                          {line.qty}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => changeLineQty(line, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <div style={{ marginTop: 6, fontWeight: 600 }}>
-                        {currency}
-                        {(line.item.price * line.qty).toFixed(2)}
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        style={{ marginTop: 6 }}
-                        onClick={() => removeLine(line)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  ))
               )}
             </div>
 
@@ -599,12 +587,21 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
         </div>
       ) : null}
 
-      {bundle ? (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60 }}>
+      {modal ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 60,
+            display: 'grid',
+            placeItems: 'center',
+            padding: 16,
+          }}
+        >
           <button
             type="button"
-            aria-label="Close add-ons"
-            onClick={() => setBundle(null)}
+            aria-label="Close"
+            onClick={closeModal}
             style={{
               position: 'absolute',
               inset: 0,
@@ -615,143 +612,180 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
             }}
           />
           <div
+            className="card"
             style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              maxHeight: '80vh',
-              display: 'flex',
-              flexDirection: 'column',
-              background: 'var(--panel)',
-              color: 'var(--text)',
-              borderTop: '1px solid var(--line)',
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-              padding: '14px 16px 18px',
-              boxShadow: '0 -8px 30px rgba(0,0,0,0.25)',
+              position: 'relative',
+              width: '100%',
+              maxWidth: 380,
+              maxHeight: '85vh',
+              overflow: 'auto',
+              margin: 0,
             }}
           >
-            <div className="inline" style={{ alignItems: 'center', gap: 8 }}>
-              <strong style={{ flex: 1, fontSize: 16 }}>
-                {bundle.parent.name}
-              </strong>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => setBundle(null)}
-              >
-                Cancel
-              </button>
-            </div>
+            <div className="card-body">
+              <strong style={{ fontSize: 16 }}>{modal.item.name}</strong>
 
-            <div
-              className="inline"
-              style={{ alignItems: 'center', gap: 8, margin: '10px 0 4px' }}
-            >
-              <span style={{ flex: 1, fontWeight: 600 }}>Quantity</span>
-              <button
-                type="button"
-                className="btn btn-sm"
-                disabled={bundle.parentQty <= 1}
-                onClick={() =>
-                  setBundle({ ...bundle, parentQty: bundle.parentQty - 1 })
-                }
-              >
-                −
-              </button>
-              <span style={{ minWidth: 18, textAlign: 'center' }}>
-                {bundle.parentQty}
-              </span>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() =>
-                  setBundle({ ...bundle, parentQty: bundle.parentQty + 1 })
-                }
-              >
-                +
-              </button>
-            </div>
-
-            <div className="muted small" style={{ marginTop: 6 }}>
-              Add on (optional)
-            </div>
-            <div style={{ overflowY: 'auto' }}>
-              {bundle.options.map((option) => {
-                const qty = bundle.qty[option.sku] || 0;
-                return (
-                  <div
-                    key={option.sku}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      padding: '8px 0',
-                      borderBottom: '1px solid var(--line-soft)',
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
+              {modal.type === 'drink' ? (
+                <>
+                  {optionHas(modal.item, 'sugar') ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="muted small">Sugar</div>
                       <div
-                        style={{
-                          fontWeight: 600,
-                          marginBottom: 3,
-                          lineHeight: 1.3,
-                        }}
+                        className="inline"
+                        style={{ flexWrap: 'wrap', gap: 6, marginTop: 4 }}
                       >
-                        {option.name}
-                      </div>
-                      <div className="muted small">
-                        {currency}
-                        {Number(option.price).toFixed(2)}
+                        {SUGAR_LEVELS.map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            className={`btn btn-sm${modal.sugar === level ? ' btn-primary' : ''}`}
+                            onClick={() =>
+                              setModal({ ...modal, sugar: level })
+                            }
+                          >
+                            {level}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                    <div
-                      className="inline"
-                      style={{ gap: 6, alignItems: 'center' }}
+                  ) : null}
+                  {optionHas(modal.item, 'ice') ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="muted small">Ice</div>
+                      <div
+                        className="inline"
+                        style={{ flexWrap: 'wrap', gap: 6, marginTop: 4 }}
+                      >
+                        {ICE_LEVELS.map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            className={`btn btn-sm${modal.ice === level ? ' btn-primary' : ''}`}
+                            onClick={() => setModal({ ...modal, ice: level })}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div
+                    className="inline"
+                    style={{ alignItems: 'center', gap: 8, margin: '12px 0 4px' }}
+                  >
+                    <span style={{ flex: 1, fontWeight: 600 }}>Quantity</span>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={modal.parentQty <= 1}
+                      onClick={() =>
+                        setModal({ ...modal, parentQty: modal.parentQty - 1 })
+                      }
                     >
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={qty === 0}
-                        onClick={() =>
-                          setBundle({
-                            ...bundle,
-                            qty: { ...bundle.qty, [option.sku]: qty - 1 },
-                          })
-                        }
-                      >
-                        −
-                      </button>
-                      <span style={{ minWidth: 18, textAlign: 'center' }}>
-                        {qty}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() =>
-                          setBundle({
-                            ...bundle,
-                            qty: { ...bundle.qty, [option.sku]: qty + 1 },
-                          })
-                        }
-                      >
-                        +
-                      </button>
-                    </div>
+                      −
+                    </button>
+                    <span style={{ minWidth: 18, textAlign: 'center' }}>
+                      {modal.parentQty}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() =>
+                        setModal({ ...modal, parentQty: modal.parentQty + 1 })
+                      }
+                    >
+                      +
+                    </button>
                   </div>
-                );
-              })}
-            </div>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ marginTop: 12 }}
-              onClick={confirmBundle}
-            >
-              Add to order
-            </button>
+                  <div className="muted small" style={{ marginTop: 10 }}>
+                    Add on (optional)
+                  </div>
+                  <div>
+                    {modal.options.map((option) => {
+                      const qty = modal.qty[option.sku] || 0;
+                      return (
+                        <div
+                          key={option.sku}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: '8px 0',
+                            borderBottom: '1px solid var(--line-soft)',
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                marginBottom: 3,
+                                lineHeight: 1.3,
+                              }}
+                            >
+                              {option.name}
+                            </div>
+                            <div className="muted small">
+                              {currency}
+                              {Number(option.price).toFixed(2)}
+                            </div>
+                          </div>
+                          <div
+                            className="inline"
+                            style={{ gap: 6, alignItems: 'center' }}
+                          >
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              disabled={qty === 0}
+                              onClick={() =>
+                                setModal({
+                                  ...modal,
+                                  qty: { ...modal.qty, [option.sku]: qty - 1 },
+                                })
+                              }
+                            >
+                              −
+                            </button>
+                            <span style={{ minWidth: 18, textAlign: 'center' }}>
+                              {qty}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() =>
+                                setModal({
+                                  ...modal,
+                                  qty: { ...modal.qty, [option.sku]: qty + 1 },
+                                })
+                              }
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              <div className="actions" style={{ marginTop: 16 }}>
+                <button type="button" className="btn" onClick={closeModal}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={modal.type === 'drink' ? confirmDrink : confirmBundle}
+                >
+                  {modal.type === 'drink' ? 'Add' : 'Add to order'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

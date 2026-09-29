@@ -632,13 +632,12 @@ class CashierService {
     var itemNumber = 0;
     for (final line in groupOrderItems(order.items, bySku)) {
       itemNumber += 1;
-      lines.add('$itemNumber. ${line.item.name} x ${line.item.qty}');
-      lines.add(row('  ${line.item.qty} x ${money(line.item.unitPrice)}',
+      lines.add('$itemNumber. ${line.item.name}');
+      lines.add(row('   ${line.item.qty} X ${money(line.item.unitPrice)}',
           money(line.item.lineTotal)));
       for (final child in line.children) {
-        lines.add(
-            '    - ${child.name}${child.qty > 1 ? ' x ${child.qty}' : ''}');
-        lines.add(row('      ${child.qty} x ${money(child.unitPrice)}',
+        lines.add('    - ${child.name}');
+        lines.add(row('       ${child.qty} X ${money(child.unitPrice)}',
             money(child.lineTotal)));
       }
     }

@@ -137,12 +137,12 @@ class EscPosRenderer {
       final amount = _money(raw['line']);
       if (raw['addOn'] == true) {
         // An add-on sits under the item it was ordered with.
-        line('    - $name${qty > 1 ? ' x $qtyText' : ''}');
-        line(_row('      $qtyText x $price', amount));
+        line('    - $name');
+        line(_row('       $qtyText X $price', amount));
       } else {
         itemNumber += 1;
-        line('$itemNumber. $name x $qtyText');
-        line(_row('  $qtyText x $price', amount));
+        line('$itemNumber. $name');
+        line(_row('   $qtyText X $price', amount));
       }
     }
     out.addAll(generator.hr());
