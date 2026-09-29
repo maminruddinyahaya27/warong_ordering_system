@@ -22,13 +22,13 @@ class EscPosRenderer {
         _ => PosTextSize.size2,
       };
 
-  /// Ticket body width. Kept at 1x for 'large' so the 32-column layout (and the
-  /// dashed rules) still fit; 'huge' doubles it when maximum size is wanted.
+  /// Ticket body width. Scaling the width as well matters: many 58mm printers
+  /// silently ignore a height-only scale, so "large" doubles both.
   static PosTextSize _ticketWidth() =>
       switch (SettingsStore.instance.ticketTextSize) {
         'normal' => PosTextSize.size1,
-        'huge' => PosTextSize.size2,
-        _ => PosTextSize.size1,
+        'huge' => PosTextSize.size3,
+        _ => PosTextSize.size2,
       };
 
   static bool _isRule(String line) {
@@ -42,21 +42,18 @@ class EscPosRenderer {
     final generator = Generator(PaperSize.mm58, await _profile());
     final out = <int>[];
 
-    out.addAll(generator.setStyles(const PosStyles(
-      align: PosAlign.center,
-      bold: true,
-      height: PosTextSize.size2,
-      width: PosTextSize.size2,
-    )));
-    out.addAll(generator.text('RESTAURANT ORDER'));
-
-    out.addAll(generator.setStyles(const PosStyles(
-      align: PosAlign.center,
-      bold: true,
-      height: PosTextSize.size2,
-      width: PosTextSize.size2,
-    )));
-    out.addAll(generator.text('[$station]'));
+    // Styles are passed to text(): text() applies the default styles first,
+    // which would otherwise undo a previous setStyles() call.
+    // Header: the station only, sized by the ticket text size setting.
+    out.addAll(generator.text(
+      '[$station]',
+      styles: PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: _ticketHeight(),
+        width: _ticketWidth(),
+      ),
+    ));
 
     // Body: enlarged per the ticket size setting. Dashed rules stay at 1x so
     // they never wrap when the body is doubled in width.
@@ -71,8 +68,10 @@ class EscPosRenderer {
     out.addAll(generator.setStyles(ruleStyle));
     out.addAll(generator.hr());
     for (final line in const LineSplitter().convert(payload)) {
-      out.addAll(generator.setStyles(_isRule(line) ? ruleStyle : bodyStyle));
-      out.addAll(generator.text(line));
+      out.addAll(generator.text(
+        line,
+        styles: _isRule(line) ? ruleStyle : bodyStyle,
+      ));
     }
 
     // No footer on station tickets: the payload already ends with a rule, and
@@ -95,17 +94,18 @@ class EscPosRenderer {
     final generator = Generator(PaperSize.mm58, await _profile());
     final out = <int>[];
 
+    // Styles must be passed to text(): text() applies the default styles first,
+    // which would otherwise undo a previous setStyles() call.
     void line(String text, {PosStyles? style}) {
-      if (style != null) out.addAll(generator.setStyles(style));
-      out.addAll(generator.text(text));
+      out.addAll(generator.text(text, styles: style ?? const PosStyles()));
     }
 
     line((data['restaurantName'] ?? 'RECEIPT').toString().toUpperCase(),
-        style: const PosStyles(
+        style: PosStyles(
           align: PosAlign.center,
           bold: true,
-          height: PosTextSize.size2,
-          width: PosTextSize.size2,
+          height: _ticketHeight(),
+          width: _ticketWidth(),
         ));
     final when = (data['when'] ?? '').toString();
     if (when.isNotEmpty) {
@@ -159,7 +159,7 @@ class EscPosRenderer {
       line(_row('Discount', '-$currency${_money(discount)}'));
     }
 
-    line(_row('TOTAL', '$currency${_money(data['total'])}'),
+    line(_row('Total', '$currency${_money(data['total'])}'),
         style: const PosStyles(bold: true));
 
     // Part payments print what is still owed.
@@ -188,7 +188,12 @@ class EscPosRenderer {
     out.addAll(generator.hr());
     final footer = (data['footer'] ?? '').toString();
     if (footer.isNotEmpty) {
-      line(footer, style: const PosStyles(align: PosAlign.center));
+      line(footer,
+          style: PosStyles(
+            align: PosAlign.center,
+            height: _ticketHeight(),
+            width: _ticketWidth(),
+          ));
     }
 
     out.addAll(generator.feed(2));

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -5,7 +7,23 @@ import 'package:restaurant_pos_hub/models/order.dart';
 import 'package:restaurant_pos_hub/models/product.dart';
 import 'package:restaurant_pos_hub/services/app_settings.dart';
 import 'package:restaurant_pos_hub/services/cashier_service.dart';
+import 'package:restaurant_pos_hub/services/escpos_renderer.dart';
 import 'package:restaurant_pos_hub/services/print_queue_db.dart';
+
+/// Index of [needle] inside [bytes], or -1.
+int indexOfBytes(List<int> bytes, List<int> needle) {
+  for (var i = 0; i <= bytes.length - needle.length; i += 1) {
+    var matches = true;
+    for (var j = 0; j < needle.length; j += 1) {
+      if (bytes[i + j] != needle[j]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return i;
+  }
+  return -1;
+}
 
 /// Station ticket layout:
 ///
@@ -16,6 +34,16 @@ import 'package:restaurant_pos_hub/services/print_queue_db.dart';
 ///       - Normal sugar, Normal ice
 ///
 ///   ------------------------------
+/// Esc/POS alignment byte in effect for [needle] (0x31 = centre, 0x30 = left).
+int alignBeforeText(List<int> bytes, List<int> needle) {
+  final index = indexOfBytes(bytes, needle);
+  if (index < 1) return -1;
+  for (var i = index - 1; i >= 1; i -= 1) {
+    if (bytes[i - 1] == 0x1B && bytes[i] == 0x61) return bytes[i + 1];
+  }
+  return -1;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -199,5 +227,112 @@ void main() {
     expect(receipt, contains('   1 X 2.00'));
     expect(receipt, contains('    - Kari Kambing'));
     expect(receipt, contains('       1 X 2.00'));
+  });
+
+  test('the printed receipt centres its header and footer', () async {
+    final payload = jsonEncode({
+      'restaurantName': 'Warong',
+      'footer': 'Thank you',
+      'currency': 'RM',
+      'total': 5.0,
+      'items': const [],
+    });
+
+    final bytes = await EscPosRenderer.renderReceipt(payload);
+
+    // The nearest alignment command before a piece of text must be "centre".
+    // esc_pos_utils encodes it as ESC a '1' (0x31), left is '0'.
+    int alignBefore(int textIndex) {
+      for (var i = textIndex - 1; i >= 1; i -= 1) {
+        if (bytes[i - 1] == 0x1B && bytes[i] == 0x61) return bytes[i + 1];
+      }
+      return -1;
+    }
+
+    final title = indexOfBytes(bytes, 'WARONG'.codeUnits);
+    expect(title, greaterThan(2));
+    expect(alignBefore(title), 0x31);
+
+    final footer = indexOfBytes(bytes, 'Thank you'.codeUnits);
+    expect(footer, greaterThan(2));
+    expect(alignBefore(footer), 0x31);
+  });
+
+  test('the ticket header is the station only, centred', () async {
+    final bytes = await EscPosRenderer.renderOrder('GRIDDLE', 'ORDER - 1\n');
+    expect(indexOfBytes(bytes, 'RESTAURANT ORDER'.codeUnits), -1);
+    expect(indexOfBytes(bytes, '[GRIDDLE]'.codeUnits), greaterThan(0));
+    expect(alignBeforeText(bytes, '[GRIDDLE]'.codeUnits), 0x31);
+  });
+
+  test('the ticket header follows the size setting', () async {
+    // GS ! n : 0x11 = double width + height.
+    const doubleSize = [0x1D, 0x21, 0x11];
+
+    await SettingsStore.instance.save({'ticket_text_size': 'normal'});
+    await SettingsStore.instance.load();
+    final normal = await EscPosRenderer.renderOrder('GRIDDLE', 'ORDER - 1\n');
+    expect(indexOfBytes(normal, doubleSize), -1);
+
+    await SettingsStore.instance.save({'ticket_text_size': 'large'});
+    await SettingsStore.instance.load();
+    final large = await EscPosRenderer.renderOrder('GRIDDLE', 'ORDER - 1\n');
+    expect(indexOfBytes(large, doubleSize), greaterThan(0));
+  });
+
+  test('the receipt header and footer follow the size setting', () async {
+    final payload = jsonEncode({
+      'restaurantName': 'Warong',
+      'footer': 'Thank you',
+      'currency': 'RM',
+      'total': 5.0,
+      'items': const [],
+    });
+    const doubleSize = [0x1D, 0x21, 0x11];
+
+    await SettingsStore.instance.save({'ticket_text_size': 'normal'});
+    await SettingsStore.instance.load();
+    final normal = await EscPosRenderer.renderReceipt(payload);
+    expect(indexOfBytes(normal, doubleSize), -1);
+
+    await SettingsStore.instance.save({'ticket_text_size': 'large'});
+    await SettingsStore.instance.load();
+    final large = await EscPosRenderer.renderReceipt(payload);
+    expect(indexOfBytes(large, doubleSize), greaterThan(0));
+  });
+
+  // Kept last: it changes the stored ticket size for the rest of the file.
+  test('the ticket body honours the text size setting', () async {
+    int countBytes(List<int> bytes, List<int> needle) {
+      var count = 0;
+      var from = 0;
+      while (true) {
+        final index = indexOfBytes(bytes.sublist(from), needle);
+        if (index == -1) break;
+        count += 1;
+        from += index + needle.length;
+      }
+      return count;
+    }
+
+    // GS ! n : 0x11 = double width + height.
+    const doubleSize = [0x1D, 0x21, 0x11];
+    const payload = 'ORDER - 1\nTABLE - 5\n';
+    const body = '1. Roti Kosong X 1\n';
+
+    await SettingsStore.instance.save({'ticket_text_size': 'normal'});
+    await SettingsStore.instance.load();
+    final normal =
+        await EscPosRenderer.renderOrder('GRIDDLE', '$payload$body');
+
+    await SettingsStore.instance.save({'ticket_text_size': 'large'});
+    await SettingsStore.instance.load();
+    final large = await EscPosRenderer.renderOrder('GRIDDLE', '$payload$body');
+
+    expect(
+      countBytes(large, doubleSize),
+      greaterThan(countBytes(normal, doubleSize)),
+      reason: 'the enlarged size must reach the printer',
+    );
   });
 }

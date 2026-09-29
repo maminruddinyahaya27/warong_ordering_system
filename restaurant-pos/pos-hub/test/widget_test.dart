@@ -187,7 +187,7 @@ void main() {
     expect(text, contains('Table: 7'));
     expect(text, contains('Server: Aina'));
     expect(text, contains('Roti Kosong'));
-    expect(text, contains('TOTAL'));
+    expect(text, contains('Total'));
     expect(text, contains('Cash'));
     expect(text, contains('Change'));
     // Thermal paper is 32 columns wide.

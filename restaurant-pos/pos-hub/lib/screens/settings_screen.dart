@@ -181,15 +181,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           _dropdown(
-            label: 'Ticket text size (kitchen tickets)',
+            label: 'Text size (tickets & receipts)',
             value: _ticketSize,
             options: const ['normal', 'large', 'huge'],
             onChanged: (value) => setState(() => _ticketSize = value),
           ),
           const Text(
-            'How large item lines print on station tickets. "large" is twice '
-            'the height and keeps the 32-column layout; "huge" also doubles the '
-            'width, so long item names wrap.',
+            'How large the text prints: it sizes the ticket body and its station '
+            'header, and the receipt header and footer. "large" doubles the width '
+            'and height, "huge" is three times the size. Wider text means fewer '
+            'characters per line, so long names wrap onto the next line.',
             style: TextStyle(fontSize: 11.5, color: Colors.grey),
           ),
           const SizedBox(height: 12),

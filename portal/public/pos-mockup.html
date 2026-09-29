@@ -1018,7 +1018,7 @@
     lines.push(padRow('Subtotal', state.currency + t.subtotal.toFixed(2)));
     lines.push(padRow('Tax (' + (state.taxRate * 100).toFixed(0) + '%)',
       state.currency + t.tax.toFixed(2)));
-    lines.push(padRow('TOTAL', state.currency + payable.toFixed(2)));
+    lines.push(padRow('Total', state.currency + payable.toFixed(2)));
     if (order.method) {
       lines.push(padRow(methodLabel(order.method), state.currency + tendered.toFixed(2)));
       if (order.method === 'cash' && change > 0) {

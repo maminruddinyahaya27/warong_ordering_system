@@ -73,7 +73,7 @@ void main() {
     await tester.tap(find.text('Teh Tarik (Panas)').first);
     await tester.pump();
     expect(find.text('1x'), findsNWidgets(2), reason: 'two cart lines');
-    expect(find.text('TOTAL RM4.95'), findsOneWidget);
+    expect(find.text('Total RM4.95'), findsOneWidget);
 
     // Dine-in requires a table.
     await tester.enterText(find.byType(TextField).at(0), '5');
@@ -93,7 +93,7 @@ void main() {
 
     // …and the cart is empty again.
     expect(find.text('1x'), findsNothing, reason: 'cart should be cleared');
-    expect(find.text('TOTAL RM0.00'), findsOneWidget);
+    expect(find.text('Total RM0.00'), findsOneWidget);
 
     // The table field is blank, ready for the next order.
     final tableField = tester.widget<TextField>(find.byType(TextField).at(0));

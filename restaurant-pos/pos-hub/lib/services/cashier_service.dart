@@ -655,7 +655,7 @@ class CashierService {
       lines.add(row('Discount', '-$currency${money(order.discount)}'));
     }
     final collected = order.paid > 0 ? _round2(order.paid) : order.total;
-    lines.add(row('TOTAL', '$currency${money(collected)}'));
+    lines.add(row('Total', '$currency${money(collected)}'));
 
     final payments = order.id == null
         ? const <Map<String, dynamic>>[]

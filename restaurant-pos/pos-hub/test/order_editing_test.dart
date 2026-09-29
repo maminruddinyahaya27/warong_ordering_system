@@ -332,7 +332,7 @@ void main() {
     final preview = await cashier.receiptPreview(settled);
     expect(preview, contains('Cash'));
     expect(preview, contains('Card'));
-    expect(preview, contains('TOTAL'));
+    expect(preview, contains('Total'));
   });
 
   test('the day report counts mixed tenders by method', () async {

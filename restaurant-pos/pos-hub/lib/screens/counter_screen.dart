@@ -976,7 +976,7 @@ class _CounterScreenState extends State<CounterScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          'TOTAL ${_settings.currency}${_totals.total.toStringAsFixed(2)}',
+                          'Total ${_settings.currency}${_totals.total.toStringAsFixed(2)}',
                           style:
                               const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
@@ -1054,7 +1054,7 @@ class _CounterScreenState extends State<CounterScreen> {
             Text('Tax ${_settings.currency}${_totals.tax.toStringAsFixed(2)}'),
             const Spacer(),
             Text(
-              'TOTAL ${_settings.currency}${_totals.total.toStringAsFixed(2)}',
+              'Total ${_settings.currency}${_totals.total.toStringAsFixed(2)}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
