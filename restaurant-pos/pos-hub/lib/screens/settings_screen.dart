@@ -33,6 +33,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _taxInclusive = false;
   bool _autoMerge = true;
+  bool _acceptQrOrders = false;
+  String _ticketSize = 'large';
   bool _saving = false;
 
   @override
@@ -56,6 +58,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         TextEditingController(text: settings.keepAwakeMinutes.toString());
     _taxInclusive = settings.taxInclusive;
     _autoMerge = settings.autoMergeTableOrders;
+    _acceptQrOrders = settings.acceptQrOrders;
+    _ticketSize = settings.ticketTextSize;
   }
 
   @override
@@ -99,8 +103,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'tax_inclusive': _taxInclusive ? 'true' : 'false',
         'rounding_step': rounding.toString(),
         'printer_cooldown_ms': cooldown.toString(),
+        'ticket_text_size': _ticketSize,
         'keep_awake_minutes': keepAwake.toString(),
         'auto_merge_table_orders': _autoMerge ? 'true' : 'false',
+        'accept_qr_orders': _acceptQrOrders ? 'true' : 'false',
         'portal_url': _portalUrl.text.trim(),
         'portal_user': _portalUser.text.trim(),
         'portal_pass': _portalPass.text,
@@ -174,6 +180,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(fontSize: 11.5, color: Colors.grey),
           ),
           const SizedBox(height: 12),
+          _dropdown(
+            label: 'Ticket text size (kitchen tickets)',
+            value: _ticketSize,
+            options: const ['normal', 'large', 'huge'],
+            onChanged: (value) => setState(() => _ticketSize = value),
+          ),
+          const Text(
+            'How large item lines print on station tickets. "large" is twice '
+            'the height and keeps the 32-column layout; "huge" also doubles the '
+            'width, so long item names wrap.',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey),
+          ),
+          const SizedBox(height: 12),
           _text(_keepAwake, 'Keep screen on for (minutes)',
               hint: '30'),
           const Text(
@@ -192,6 +211,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             value: _autoMerge,
             onChanged: (value) => setState(() => _autoMerge = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Accept QR table orders'),
+            subtitle: const Text(
+              'Import orders customers send by scanning a table QR code, and '
+              'print their kitchen tickets. Needs the portal URL and an API key '
+              'or portal login above. Customers pay at the counter.',
+            ),
+            value: _acceptQrOrders,
+            onChanged: (value) => setState(() => _acceptQrOrders = value),
           ),
           const Divider(height: 32),
           _sectionTitle('Menu source (portal)'),
@@ -279,5 +309,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (width == null) return field;
     return SizedBox(width: width, child: field);
+  }
+
+  Widget _dropdown({
+    required String label,
+    required String value,
+    required List<String> options,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        value: value,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+        items: options
+            .map((option) =>
+                DropdownMenuItem(value: option, child: Text(option)))
+            .toList(),
+        onChanged: (selected) {
+          if (selected != null) onChanged(selected);
+        },
+      ),
+    );
   }
 }

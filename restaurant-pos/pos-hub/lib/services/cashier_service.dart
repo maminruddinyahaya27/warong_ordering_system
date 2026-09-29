@@ -241,14 +241,53 @@ class CashierService {
     unawaited(_dispatcher.dispatchNext().catchError((Object _) {}));
   }
 
-  /// Enqueues one kitchen ticket per station used by the order.
+  /// Station each item should print at, after applying the portal's "add-on
+  /// for" group rule: an add-on item (e.g. a Lauk-pauk curry) ordered together
+  /// with its parent group (e.g. Roti Canai) prints on the parent's station, so
+  /// one ticket carries the roti and its curry.
+  Future<Map<String, String>> _stationOverrides(Order order) async {
+    final products = await _db.getProducts();
+    final bySku = {for (final product in products) product.sku: product};
+
+    // The station each group uses on this order.
+    final stationByGroup = <String, String>{};
+    for (final item in order.items) {
+      final group = bySku[item.sku]?.category ?? '';
+      if (group.isEmpty) continue;
+      stationByGroup.putIfAbsent(
+        group,
+        () => item.station.isEmpty ? 'KITCHEN' : item.station,
+      );
+    }
+
+    final overrides = <String, String>{};
+    for (final item in order.items) {
+      final parents = bySku[item.sku]?.addOnFor ?? '';
+      if (parents.isEmpty) continue;
+      // The item can be an add-on for several groups; follow whichever parent
+      // is on this order.
+      for (final parent in parents.split('|')) {
+        final parentStation = stationByGroup[parent];
+        if (parentStation != null) {
+          overrides[item.sku] = parentStation;
+          break;
+        }
+      }
+    }
+    return overrides;
+  }
+
+  String _stationFor(OrderItem item, Map<String, String> overrides) =>
+      overrides[item.sku] ?? (item.station.isEmpty ? 'KITCHEN' : item.station);
+
   Future<void> sendStationTickets(Order order) async {
+    final overrides = await _stationOverrides(order);
     final stations = <String>{};
     for (final item in order.items) {
-      stations.add(item.station.isEmpty ? 'KITCHEN' : item.station);
+      stations.add(_stationFor(item, overrides));
     }
     for (final station in stations) {
-      await _db.enqueue(station, '', _ticketPayload(station, order));
+      await _db.enqueue(station, '', _ticketPayload(station, order, overrides));
     }
     // Printing runs in the background: awaiting it would keep the caller (and
     // the UI, or the waiter's HTTP request) waiting for every Bluetooth ticket
@@ -320,10 +359,16 @@ class CashierService {
     final paidNow = _round2(order.paid + value);
     if (paidNow + 0.0001 >= order.total) {
       final tenders = await _db.countOrderPayments(id);
+      final isSplit = tenders > 1;
+      // A single cash payment records what the customer actually handed over
+      // (e.g. 30 on a 26.50 bill), so the receipt shows Cash 30.00 + Change.
+      final handed = (!isSplit && method == 'cash' && _round2(tendered) > 0)
+          ? _round2(tendered)
+          : paidNow;
       await _db.settleOrder(
         id,
-        method: tenders > 1 ? 'split' : method,
-        tendered: paidNow,
+        method: isSplit ? 'split' : method,
+        tendered: handed,
         changeDue: change,
       );
     }
@@ -428,13 +473,16 @@ class CashierService {
 
   /// Enqueues kitchen tickets for a subset of an order's items.
   Future<void> _sendTicketsFor(Order order, List<OrderItem> items) async {
+    // Overrides are computed from the whole order, so an add-on added later
+    // still lands on its parent's station.
+    final overrides = await _stationOverrides(order);
     final stations = <String>{};
     for (final item in items) {
-      stations.add(item.station.isEmpty ? 'KITCHEN' : item.station);
+      stations.add(_stationFor(item, overrides));
     }
     final partial = order.copyWith(items: items);
     for (final station in stations) {
-      await _db.enqueue(station, '', _ticketPayload(station, partial));
+      await _db.enqueue(station, '', _ticketPayload(station, partial, overrides));
     }
     _kickPrinter();
   }
@@ -537,7 +585,11 @@ class CashierService {
     return lines.join('\n');
   }
 
-  String _ticketPayload(String station, Order order) {
+  String _ticketPayload(
+    String station,
+    Order order, [
+    Map<String, String>? overrides,
+  ]) {
     final sb = StringBuffer();
     final takeAway = order.orderType == 'take_away';
     sb.writeln('Station: $station');
@@ -553,7 +605,8 @@ class CashierService {
     if (order.serverName.isNotEmpty) sb.writeln('Server:  ${order.serverName}');
     sb.writeln('------------------------------');
     for (final item in order.items) {
-      final itemStation = item.station.isEmpty ? 'KITCHEN' : item.station;
+      final itemStation = overrides?[item.sku] ??
+          (item.station.isEmpty ? 'KITCHEN' : item.station);
       if (itemStation != station) continue;
       sb.writeln('${item.name} x ${item.qty}');
       if (item.note.isNotEmpty) {
@@ -574,6 +627,16 @@ class CashierService {
         : await _db.getOrderPayments(order.id!);
     // What the customer actually paid: the sum of tenders once settled.
     final collected = order.paid > 0 ? _round2(order.paid) : order.total;
+    // The tender row is the source of truth for a single payment (cash shows
+    // what was handed over, not the amount charged), which also makes reprints
+    // of earlier orders correct.
+    final single = payments.length == 1 ? payments.first : null;
+    final tenderedOut = single != null
+        ? ((single['tendered'] as num?) ?? 0).toDouble()
+        : order.tendered;
+    final changeOut = single != null
+        ? ((single['change_due'] as num?) ?? 0).toDouble()
+        : order.changeDue;
     return {
       'restaurantName': _settings.restaurantName,
       'footer': _settings.receiptFooter,
@@ -599,8 +662,8 @@ class CashierService {
       'discount': order.discount,
       'total': collected,
       'payment': order.paymentMethod,
-      'tendered': order.tendered,
-      'change': order.changeDue,
+      'tendered': tenderedOut,
+      'change': changeOut,
       'payments': payments
           .map((payment) => {
                 'method': (payment['method'] ?? '').toString(),

@@ -14,6 +14,7 @@ import 'services/bluetooth_printer_manager.dart';
 import 'services/cashier_service.dart';
 import 'services/hub_auth.dart';
 import 'services/menu_sync_service.dart';
+import 'services/online_order_service.dart';
 import 'services/pos_http_server.dart';
 import 'services/print_queue_db.dart';
 import 'services/screen_awake.dart';
@@ -161,6 +162,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (settings.portalUrl.isNotEmpty) {
       unawaited(MenuSyncService.instance.syncQuietly());
     }
+
+    // Poll for QR table orders. The service no-ops unless the setting is on.
+    OnlineOrderService.instance.start();
   }
 
   void _setStatus(String value) {

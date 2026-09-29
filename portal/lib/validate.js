@@ -107,6 +107,20 @@ export function validateGroup(body, { partial = false } = {}) {
     }
   }
 
+  if (body.addOns !== undefined) {
+    const list = Array.isArray(body.addOns) ? body.addOns : [];
+    const cleaned = [
+      ...new Set(list.map((value) => String(value ?? '').trim()).filter(Boolean)),
+    ];
+    if (cleaned.length > 20) {
+      errors.push('a group can have at most 20 add-on groups');
+    } else if (cleaned.some((name) => name.length > 60)) {
+      errors.push('add-on group names must be 60 characters or fewer');
+    } else {
+      values.addOns = cleaned;
+    }
+  }
+
   if (body.sortOrder !== undefined) {
     const sortOrder = Number(body.sortOrder);
     values.sortOrder = Number.isFinite(sortOrder) ? sortOrder : 0;

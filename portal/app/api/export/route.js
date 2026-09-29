@@ -29,7 +29,20 @@ function groupStationMap(groups) {
   return map;
 }
 
-function toArrayEntry(item, colorByName, stationByName) {
+/// Add-on group name -> the parent groups that list it as an add-on.
+function addOnParentMap(groups) {
+  const map = new Map();
+  for (const group of groups) {
+    for (const addOn of group.addOns || []) {
+      const parents = map.get(addOn) || [];
+      parents.push(group.name);
+      map.set(addOn, parents);
+    }
+  }
+  return map;
+}
+
+function toArrayEntry(item, colorByName, stationByName, addOnByName) {
   const group = item.groupName || UNGROUPED_LABEL;
   const entry = {
     id: item.sku,
@@ -41,6 +54,9 @@ function toArrayEntry(item, colorByName, stationByName) {
   };
   const color = colorByName?.get(group);
   if (color) entry.groupColor = color;
+  // Add-on groups follow their parent group's station when both are ordered.
+  const addOnFor = addOnByName?.get(group);
+  if (addOnFor?.length) entry.addOnFor = addOnFor;
   if (item.options) entry.options = item.options;
   return entry;
 }
@@ -86,6 +102,7 @@ async function getExport(request) {
 
   const colorByName = groupColorMap(groups);
   const stationByName = groupStationMap(groups);
+  const addOnByName = addOnParentMap(groups);
 
   // The portal's group order is the order the apps should show. Rank items by
   // their group, then by the item's own sort order, so a feed consumer that
@@ -117,6 +134,7 @@ async function getExport(request) {
     name: group.name,
     color: group.color || '',
     station: group.station || '',
+    addOns: group.addOns || [],
     count: counts.get(group.name) || 0,
   }));
   const ungroupedCount = counts.get(UNGROUPED_LABEL) || 0;
@@ -139,7 +157,7 @@ async function getExport(request) {
     for (const item of orderedItems) {
       const key = item.groupName || UNGROUPED_LABEL;
       if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(toArrayEntry(item, colorByName, stationByName));
+      buckets.get(key).push(toArrayEntry(item, colorByName, stationByName, addOnByName));
     }
 
     payload = [...buckets.entries()]
@@ -166,7 +184,7 @@ async function getExport(request) {
     }
   } else {
     payload = orderedItems.map((item) =>
-      toArrayEntry(item, colorByName, stationByName)
+      toArrayEntry(item, colorByName, stationByName, addOnByName)
     );
   }
 

@@ -25,9 +25,15 @@ const List<String> kCounterDefaultFavs = [
 ];
 
 class _CartLine {
-  _CartLine(this.product, this.qty);
+  _CartLine(this.product, this.qty, [this.note = '']);
   final Product product;
   int qty;
+
+  /// Per-line note, e.g. the sweetness for a drink.
+  String note;
+
+  /// Identity of a line: the same drink can appear twice with different notes.
+  String get key => '${product.sku}::$note';
 
   OrderItem toOrderItem() => OrderItem(
         sku: product.sku,
@@ -36,6 +42,7 @@ class _CartLine {
         unitPrice: product.price,
         lineTotal: (product.price * qty * 100).roundToDouble() / 100,
         station: product.station,
+        note: note,
       );
 }
 
@@ -67,6 +74,9 @@ class _CounterScreenState extends State<CounterScreen> {
   List<String> _favs = [];
   bool _loading = true;
   bool _busy = false;
+
+  /// Phone layout: whether the order sheet is open.
+  bool _orderOpen = false;
 
   @override
   void initState() {
@@ -191,18 +201,125 @@ class _CounterScreenState extends State<CounterScreen> {
 
   OrderTotals get _totals => _cashier.computeTotals(_orderItems);
 
+  static const List<String> _sweetnessLevels = [
+    'Normal',
+    'Less sugar',
+    'No sugar',
+  ];
+
+  /// Adds an item. Drinks ask for a sweetness level first, and the same drink
+  /// with a different level becomes its own cart line.
   void _add(Product product) {
     if (!product.available) {
       _snack('${product.name} is sold out');
       return;
     }
+
+    if (product.isDrink) {
+      _askSweetness(product.name).then((level) {
+        if (!mounted || level == null) return;
+        _addWithNote(product, level == 'Normal' ? '' : level);
+        _maybeAddOns(product);
+      });
+      return;
+    }
+
+    _addWithNote(product, '');
+    _maybeAddOns(product);
+  }
+
+  /// Offers the add-on groups of [parent] (e.g. a Roti Canai offers Lauk-pauk
+  /// curries). Picked extras print on the parent's station.
+  Future<void> _maybeAddOns(Product parent) async {
+    final options = _products
+        .where((product) =>
+            product.available &&
+            product.addOnFor.isNotEmpty &&
+            product.addOnFor.split('|').contains(parent.category))
+        .toList();
+    if (options.isEmpty || !mounted) return;
+
+    final added = <String>[];
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Add on to ${parent.name}?'),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  added.isEmpty
+                      ? 'Optional — pick any extras, or skip.'
+                      : 'Added: ${added.join(', ')}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: options
+                        .map(
+                          (option) => ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(option.name),
+                            subtitle: Text(
+                              '${_settings.currency}${option.price.toStringAsFixed(2)}',
+                            ),
+                            trailing: const Icon(Icons.add_circle_outline),
+                            onTap: () {
+                              _addWithNote(option, '');
+                              setDialogState(() => added.add(option.name));
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(added.isEmpty ? 'No add-on' : 'Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _askSweetness(String itemName) {
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(itemName),
+        content: const Text('Sweetness level?'),
+        actions: _sweetnessLevels
+            .map(
+              (level) => TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(level),
+                child: Text(level),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  void _addWithNote(Product product, String note) {
     setState(() {
-      final index =
-          _cart.indexWhere((line) => line.product.sku == product.sku);
+      final key = '${product.sku}::$note';
+      final index = _cart.indexWhere((line) => line.key == key);
       if (index >= 0) {
         _cart[index].qty += 1;
       } else {
-        _cart.add(_CartLine(product, 1));
+        _cart.add(_CartLine(product, 1, note));
       }
     });
   }
@@ -324,85 +441,124 @@ class _CounterScreenState extends State<CounterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final width = MediaQuery.of(context).size.width;
+    final wide = width >= 768;
+    return wide ? _wideBody(width) : _phoneBody();
+  }
+
+  /// Same split as the waiter app: order pane on the left, menu on the right.
+  Widget _wideBody(double width) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildOrderFields(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-          child: Row(
-            children: [
-              Expanded(child: _buildSearch()),
-              IconButton(
-                tooltip: 'Reload menu',
-                onPressed: _loading ? null : _loadProducts,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
+        SizedBox(
+          width: width * 0.34,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: _orderPane(),
           ),
         ),
-        if (_favs.isNotEmpty) _buildQuickPicks(),
-        _buildChips(),
-        Expanded(child: _buildProductGrid()),
-        _buildCart(),
+        const VerticalDivider(width: 1),
+        Expanded(child: _menuPane()),
+      ],
+    );
+  }
+
+  /// Phone layout: full-width menu with a cart bar that opens the order sheet.
+  Widget _phoneBody() {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Padding(
+            // Leave room for the cart bar pinned at the bottom.
+            padding: const EdgeInsets.only(bottom: 64),
+            child: _menuPane(),
+          ),
+        ),
+        Positioned(left: 0, right: 0, bottom: 0, child: _cartBar()),
+        if (_orderOpen) ...[
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => setState(() => _orderOpen = false),
+              child: const ColoredBox(color: Colors.black54),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(14),
+                  child: _orderPane(sheet: true),
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
 
   Widget _buildOrderFields() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(
-                value: 'dine_in',
-                label: Text('Dine-in'),
-                icon: Icon(Icons.table_restaurant, size: 16),
-              ),
-              ButtonSegment(
-                value: 'take_away',
-                label: Text('Take away'),
-                icon: Icon(Icons.shopping_bag_outlined, size: 16),
-              ),
-            ],
-            selected: {_orderType},
-            onSelectionChanged: (selection) =>
-                _setOrderType(selection.first),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              // Take-away has no table, so the field is hidden entirely.
-              if (_orderType == 'dine_in') ...[
-                Expanded(
-                  child: TextField(
-                    controller: _table,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Table',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: 'dine_in',
+              label: Text('Dine-in'),
+              icon: Icon(Icons.table_restaurant, size: 16),
+            ),
+            ButtonSegment(
+              value: 'take_away',
+              label: Text('Take away'),
+              icon: Icon(Icons.shopping_bag_outlined, size: 16),
+            ),
+          ],
+          selected: {_orderType},
+          onSelectionChanged: (selection) => _setOrderType(selection.first),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            // Take-away has no table, so the field is hidden entirely.
+            if (_orderType == 'dine_in') ...[
               Expanded(
                 child: TextField(
-                  controller: _server,
+                  controller: _table,
+                  keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    labelText: 'Server',
+                    labelText: 'Table',
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
             ],
-          ),
-        ],
-      ),
+            Expanded(
+              child: TextField(
+                controller: _server,
+                decoration: const InputDecoration(
+                  labelText: 'Server',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -681,102 +837,212 @@ class _CounterScreenState extends State<CounterScreen> {
     );
   }
 
-  Widget _buildCart() {
-    final totals = _totals;
+  /// Search, quick picks, category chips and the product grid.
+  Widget _menuPane() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+          child: Row(
+            children: [
+              Expanded(child: _buildSearch()),
+              IconButton(
+                tooltip: 'Reload menu',
+                onPressed: _loading ? null : _loadProducts,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+        ),
+        if (_favs.isNotEmpty) _buildQuickPicks(),
+        _buildChips(),
+        Expanded(child: _buildProductGrid()),
+      ],
+    );
+  }
+
+  int get _cartQty => _cart.fold(0, (sum, line) => sum + line.qty);
+
+  /// Phone layout: a compact bar that opens the order sheet.
+  Widget _cartBar() {
     return Material(
       elevation: 8,
-      child: SizedBox(
-        height: 300,
-        child: Column(
-          children: [
-            if (_cart.isNotEmpty)
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _cart.length,
-                  itemBuilder: (context, index) {
-                    final line = _cart[index];
-                    final lineTotal = line.product.price * line.qty;
-                    return ListTile(
-                      dense: true,
-                      title: Text(line.product.name),
-                      subtitle: Text(line.product.station),
-                      leading: Text('${line.qty}x'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline),
-                            onPressed: () => _changeQty(line, -1),
-                          ),
-                          Text(
-                            '${_settings.currency}${lineTotal.toStringAsFixed(2)}',
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () => _changeQty(line, 1),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              )
-            else
-              const Expanded(
-                child: Center(
-                  child: Text('Tap items to add them to the order'),
-                ),
-              ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+      color: Theme.of(context).colorScheme.surface,
+      child: InkWell(
+        onTap: () => setState(() => _orderOpen = true),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
                 children: [
-                  // Order note sits with the rest of the bottom section.
-                  TextField(
-                    controller: _note,
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Order note',
-                      hintText: 'Allergies, serving notes…',
-                      isDense: true,
-                      border: OutlineInputBorder(),
+                  Badge(
+                    isLabelVisible: _cartQty > 0,
+                    label: Text('$_cartQty'),
+                    child: const Icon(Icons.receipt_long),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          _cart.isEmpty
+                              ? 'No items'
+                              : '$_cartQty item${_cartQty == 1 ? '' : 's'}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          'TOTAL ${_settings.currency}${_totals.total.toStringAsFixed(2)}',
+                          style:
+                              const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                              'Tax ${_settings.currency}${totals.tax.toStringAsFixed(2)}'),
-                          Text(
-                            'TOTAL ${_settings.currency}${totals.total.toStringAsFixed(2)}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const Spacer(),
-                      OutlinedButton(
-                        onPressed:
-                            _busy || _cart.isEmpty ? null : _sendToKitchen,
-                        child: const Text('Create order'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: _busy || _cart.isEmpty ? null : _charge,
-                        icon: const Icon(Icons.point_of_sale),
-                        label: const Text('Charge'),
-                      ),
-                    ],
+                  FilledButton(
+                    onPressed: () => setState(() => _orderOpen = true),
+                    child: const Text('View order'),
                   ),
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Order details: type/table/server, lines, note, totals and the actions.
+  Widget _orderPane({bool sheet = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Order',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _cart.isEmpty ? 'No items' : '$_cartQty item(s)',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const Spacer(),
+            if (sheet)
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Close',
+                onPressed: () => setState(() => _orderOpen = false),
+              ),
           ],
         ),
+        const SizedBox(height: 8),
+        _buildOrderFields(),
+        const SizedBox(height: 12),
+        if (_cart.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Center(
+              child: Text(
+                'Tap items to add them to the order',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+            ),
+          )
+        else
+          ..._cart.map(_cartLine),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _note,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Order note',
+            hintText: 'Allergies, serving notes…',
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Text('Tax ${_settings.currency}${_totals.tax.toStringAsFixed(2)}'),
+            const Spacer(),
+            Text(
+              'TOTAL ${_settings.currency}${_totals.total.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: (_busy || _cart.isEmpty)
+                    ? null
+                    : () => _runAction(_sendToKitchen, sheet: sheet),
+                child: const Text('Create order'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: (_busy || _cart.isEmpty)
+                    ? null
+                    : () => _runAction(_charge, sheet: sheet),
+                icon: const Icon(Icons.point_of_sale),
+                label: const Text('Charge'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Runs an order action, then closes the phone sheet.
+  Future<void> _runAction(Future<void> Function() action,
+      {required bool sheet}) async {
+    await action();
+    if (mounted && sheet) setState(() => _orderOpen = false);
+  }
+
+  Widget _cartLine(_CartLine line) {
+    final lineTotal = line.product.price * line.qty;
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Text(
+        '${line.qty}x',
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+      title: Text(line.product.name),
+      subtitle: Text(
+        line.note.isEmpty
+            ? line.product.station
+            : '${line.product.station} · ${line.note}',
+        style: const TextStyle(fontSize: 11, color: Colors.grey),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: () => _changeQty(line, -1),
+          ),
+          Text('${_settings.currency}${lineTotal.toStringAsFixed(2)}'),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => _changeQty(line, 1),
+          ),
+        ],
       ),
     );
   }

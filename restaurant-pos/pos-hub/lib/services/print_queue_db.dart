@@ -9,7 +9,12 @@ class PrintQueueDb {
   static final PrintQueueDb instance = PrintQueueDb._internal();
   PrintQueueDb._internal();
 
-  static const int _version = 11;
+  static const int _version = 13;
+
+  /// Tests set this to `inMemoryDatabasePath` so each test file gets its own
+  /// database instead of sharing the on-disk one (which made state-dependent
+  /// tests flaky when files run in parallel).
+  static String? overridePath;
 
   Database? _db;
 
@@ -19,7 +24,7 @@ class PrintQueueDb {
   }
 
   Future<Database> _init() async {
-    final path = join(await getDatabasesPath(), 'print_queue.db');
+    final path = overridePath ?? join(await getDatabasesPath(), 'print_queue.db');
     return openDatabase(path, version: _version, onCreate: (db, v) async {
       await _createJobs(db);
       await _createStationPrinters(db);
@@ -82,6 +87,14 @@ class PrintQueueDb {
         await db.execute(
             'ALTER TABLE products ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
       }
+      if (oldV < 12) {
+        await db.execute(
+            "ALTER TABLE products ADD COLUMN options TEXT NOT NULL DEFAULT ''");
+      }
+      if (oldV < 13) {
+        await db.execute(
+            "ALTER TABLE products ADD COLUMN add_on_for TEXT NOT NULL DEFAULT ''");
+      }
     });
   }
 
@@ -120,6 +133,8 @@ class PrintQueueDb {
         category TEXT,
         available INTEGER,
         color TEXT,
+        options TEXT,
+        add_on_for TEXT,
         sort_order INTEGER,
         updated_at INTEGER
       )
@@ -364,6 +379,8 @@ class PrintQueueDb {
           'category': p.category,
           'available': p.available ? 1 : 0,
           'color': p.color,
+          'options': p.options,
+          'add_on_for': p.addOnFor,
           'sort_order': p.sortOrder,
           'updated_at': now,
         }, conflictAlgorithm: ConflictAlgorithm.replace);

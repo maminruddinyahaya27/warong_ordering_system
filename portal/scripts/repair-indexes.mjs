@@ -4,6 +4,8 @@ import MenuGroup from '../lib/models/MenuGroup.js';
 import Station from '../lib/models/Station.js';
 import Setting from '../lib/models/Setting.js';
 import PriceHistory from '../lib/models/PriceHistory.js';
+import Table from '../lib/models/Table.js';
+import OnlineOrder from '../lib/models/OnlineOrder.js';
 import { SEED_GROUPS } from '../lib/seedData.js';
 import { connectDb, resolveTenant } from './tenant.mjs';
 
@@ -42,7 +44,15 @@ const UNIQUE_KEYS = [
   { model: MenuItem, key: 'sku' },
 ];
 
-const ALL_MODELS = [MenuItem, MenuGroup, Station, Setting, PriceHistory];
+const ALL_MODELS = [
+  MenuItem,
+  MenuGroup,
+  Station,
+  Setting,
+  PriceHistory,
+  Table,
+  OnlineOrder,
+];
 
 async function dropIndexes() {
   let dropped = 0;

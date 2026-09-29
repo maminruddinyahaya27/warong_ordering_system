@@ -12,8 +12,13 @@ const PUBLIC_PREFIXES = [
   '/login',
   '/forgot-password',
   '/reset-password',
+  // Customer self-ordering from a table QR code.
+  '/order',
+  '/api/public',
   '/api/auth',
+  // Menu feed and QR-order polling authenticate with the tenant API key.
   '/api/export',
+  '/api/online-orders',
 ];
 
 async function verifyToken(token, secret) {

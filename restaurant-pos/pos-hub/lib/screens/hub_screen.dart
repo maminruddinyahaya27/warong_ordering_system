@@ -10,6 +10,7 @@ import '../services/app_settings.dart';
 import '../services/bluetooth_printer_manager.dart';
 import '../services/hub_auth.dart';
 import '../services/menu_sync_service.dart';
+import '../services/online_order_service.dart';
 import '../services/permission_helper.dart';
 import '../services/pos_http_server.dart';
 import '../services/print_queue_db.dart';
@@ -426,6 +427,18 @@ Cola x 2
                 ),
               ),
             ],
+            const SizedBox(height: 8),
+            _card(
+              'QR table orders',
+              !settings.acceptQrOrders
+                  ? 'Off — enable in Settings → Ordering'
+                  : settings.qrLastError.isNotEmpty
+                      ? 'Error: ${settings.qrLastError}'
+                      : settings.qrLastPull.isEmpty
+                          ? 'Waiting for the first check…'
+                          : 'Checked ${_shortTime(settings.qrLastPull)}'
+                              '${OnlineOrderService.instance.importedCount > 0 ? ' · ${OnlineOrderService.instance.importedCount} imported' : ''}',
+            ),
             const SizedBox(height: 16),
             Row(
               children: [

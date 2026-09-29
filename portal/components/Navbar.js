@@ -7,13 +7,21 @@ const LINKS = [
   { href: '/', label: 'Dashboard' },
   { href: '/groups', label: 'Groups' },
   { href: '/menu', label: 'Menu & Prices' },
+  { href: '/tables', label: 'Tables & QR' },
   { href: '/stations', label: 'Stations' },
   { href: '/history', label: 'Price History' },
   { href: '/users', label: 'Users' },
   { href: '/settings', label: 'Settings' },
 ];
 
-const SIGNED_OUT_PATHS = ['/login', '/forgot-password', '/reset-password'];
+// Screens with no portal navigation: the auth pages and the public customer
+// ordering page that a table QR opens.
+const SIGNED_OUT_PATHS = [
+  '/login',
+  '/forgot-password',
+  '/reset-password',
+  '/order',
+];
 
 export default function Navbar() {
   const pathname = usePathname();

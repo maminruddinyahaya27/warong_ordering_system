@@ -10,6 +10,13 @@ class Product {
   /// Group colour (hex, e.g. `#1565C0`) inherited from the portal's group.
   final String color;
 
+  /// Portal item options, e.g. `drink` — drives the sweetness prompt.
+  final String options;
+
+  /// Portal group this item is an add-on for (e.g. Lauk-pauk -> Roti Canai).
+  /// When both groups are on one order the add-on prints on that station.
+  final String addOnFor;
+
   /// Position in the portal feed. Preserves the portal's group order (and the
   /// order of items within a group) instead of falling back to alphabetical.
   final int sortOrder;
@@ -22,8 +29,12 @@ class Product {
     required this.category,
     required this.available,
     this.color = '',
+    this.options = '',
+    this.addOnFor = '',
     this.sortOrder = 0,
   });
+
+  bool get isDrink => options.toLowerCase().contains('drink');
 
   Map<String, dynamic> toMap() => {
         'sku': sku,
@@ -33,6 +44,8 @@ class Product {
         'category': category,
         'available': available ? 1 : 0,
         'color': color,
+        'options': options,
+        'add_on_for': addOnFor,
         'sort_order': sortOrder,
       };
 
@@ -44,6 +57,8 @@ class Product {
         category: map['category'] as String? ?? '',
         available: map['available'] == 1 || map['available'] == true,
         color: map['color'] as String? ?? '',
+        options: map['options'] as String? ?? '',
+        addOnFor: map['add_on_for'] as String? ?? '',
         sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
       );
 
@@ -55,6 +70,8 @@ class Product {
         category: category,
         available: available,
         color: color,
+        options: options,
+        addOnFor: addOnFor,
         sortOrder: order,
       );
 }

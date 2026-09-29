@@ -54,9 +54,22 @@ class SettingsStore {
   int get printerCooldownMs =>
       _double('printer_cooldown_ms', 1500).round().clamp(0, 10000);
 
+  /// Text size on kitchen station tickets: 'normal' | 'large' | 'huge'.
+  /// Larger text is easier to read from across a hot kitchen.
+  String get ticketTextSize {
+    final value = _string('ticket_text_size', 'large');
+    return ['normal', 'large', 'huge'].contains(value) ? value : 'large';
+  }
+
   /// New dine-in orders for a table that still has an open bill are added to
   /// that bill, so the table pays on one receipt.
   bool get autoMergeTableOrders => _bool('auto_merge_table_orders', true);
+
+  /// Import orders customers placed by scanning a table QR code.
+  bool get acceptQrOrders => _bool('accept_qr_orders', false);
+
+  String get qrLastPull => _string('qr_last_pull');
+  String get qrLastError => _string('qr_last_error');
 
   /// Minutes of no interaction before the tablet is allowed to sleep. The
   /// screen is kept on while the till is being used.

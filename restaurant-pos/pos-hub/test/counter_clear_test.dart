@@ -14,6 +14,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    PrintQueueDb.overridePath = inMemoryDatabasePath;
   });
 
   setUp(() async {

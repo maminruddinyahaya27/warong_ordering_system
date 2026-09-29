@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import BulkBar from '@/components/BulkBar';
+import useBulkSelection from '@/components/useBulkSelection';
+
 export default function GroupManager({ groups, stations = [], ungroupedCount = 0 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState({});
@@ -17,6 +20,9 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selected, count, isSelected, toggle, replace, clear } =
+    useBulkSelection();
 
   function draftFor(group) {
     return (
@@ -25,6 +31,7 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
         description: group.description || '',
         color: group.color || '',
         station: group.station || '',
+        addOns: Array.isArray(group.addOns) ? group.addOns : [],
       }
     );
   }
@@ -43,7 +50,8 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
       draft.name !== group.name ||
       draft.description !== (group.description || '') ||
       draft.color !== (group.color || '') ||
-      draft.station !== (group.station || '')
+      draft.station !== (group.station || '') ||
+      (draft.addOns || []).join('|') !== (group.addOns || []).join('|')
     );
   }
 
@@ -165,10 +173,60 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
     }
   }
 
+  function addAddOn(group, name) {
+    const draft = draftFor(group);
+    if ((draft.addOns || []).includes(name)) return;
+    setDraft(group, { addOns: [...(draft.addOns || []), name] });
+  }
+
+  function removeAddOn(group, name) {
+    const draft = draftFor(group);
+    setDraft(group, {
+      addOns: (draft.addOns || []).filter((entry) => entry !== name),
+    });
+  }
+
+  async function bulkDeleteGroups() {
+    if (
+      !window.confirm(
+        `Delete ${count} group(s)? Groups that still hold items are skipped.`
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await request('/api/groups/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ ids: selected }),
+      });
+      setNotice(
+        data.blocked?.length
+          ? `${data.deleted} deleted · skipped: ${data.blocked.join(', ')}`
+          : `${data.deleted} group(s) deleted`
+      );
+      clear();
+      router.refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <div className="stack">
       {error ? <div className="notice notice-error">{error}</div> : null}
       {notice ? <div className="notice notice-ok">{notice}</div> : null}
+      <BulkBar
+        count={count}
+        busy={bulkBusy}
+        onClear={clear}
+        onDelete={bulkDeleteGroups}
+        noun="group"
+      />
 
       <section className="card">
         <header>
@@ -189,11 +247,26 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
               <table className="data">
                 <thead>
                   <tr>
+                    <th style={{ width: 34 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all groups"
+                        checked={count > 0 && count === groups.length}
+                        onChange={(event) =>
+                          replace(
+                            event.target.checked
+                              ? groups.map((group) => group.id)
+                              : []
+                          )
+                        }
+                      />
+                    </th>
                     <th style={{ width: 110 }}>Order</th>
                     <th>Group</th>
                     <th>Description</th>
                     <th>Colour</th>
                     <th>Station</th>
+                    <th>Add-ons</th>
                     <th>Items</th>
                     <th>If deleted, move items to</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
@@ -207,6 +280,14 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
 
                     return (
                       <tr key={group.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${group.name}`}
+                            checked={isSelected(group.id)}
+                            onChange={() => toggle(group.id)}
+                          />
+                        </td>
                         <td>
                           <div
                             className="inline"
@@ -301,6 +382,60 @@ export default function GroupManager({ groups, stations = [], ungroupedCount = 0
                                 {station}
                               </option>
                             ))}
+                          </select>
+                        </td>
+                        <td>
+                          <div
+                            className="inline"
+                            style={{ flexWrap: 'wrap', gap: 6, marginBottom: 6 }}
+                          >
+                            {draft.addOns.length === 0 ? (
+                              <span className="muted small">None</span>
+                            ) : (
+                              draft.addOns.map((name) => (
+                                <span key={name} className="badge">
+                                  {name}
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${name} from ${group.name}`}
+                                    disabled={rowBusy}
+                                    onClick={() => removeAddOn(group, name)}
+                                    style={{
+                                      marginLeft: 6,
+                                      border: 0,
+                                      background: 'transparent',
+                                      cursor: 'pointer',
+                                      color: 'inherit',
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
+                          <select
+                            value=""
+                            disabled={rowBusy}
+                            onChange={(event) => {
+                              if (event.target.value) {
+                                addAddOn(group, event.target.value);
+                              }
+                            }}
+                            aria-label={`Add an add-on group to ${group.name}`}
+                          >
+                            <option value="">+ add add-on group…</option>
+                            {groups
+                              .filter(
+                                (entry) =>
+                                  entry.id !== group.id &&
+                                  !draft.addOns.includes(entry.name)
+                              )
+                              .map((entry) => (
+                                <option key={entry.id} value={entry.name}>
+                                  {entry.name}
+                                </option>
+                              ))}
                           </select>
                         </td>
                         <td>

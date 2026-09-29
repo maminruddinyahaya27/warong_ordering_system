@@ -1,5 +1,6 @@
 import './globals.css';
 import Navbar from '@/components/Navbar';
+import SiteFooter from '@/components/SiteFooter';
 
 export const metadata = {
   title: 'Warong — Menu & Price Portal',
@@ -12,9 +13,7 @@ export default function RootLayout({ children }) {
       <body>
         <Navbar />
         <main className="container">{children}</main>
-        <footer className="footer">
-          Warong Menu &amp; Price Portal · data stored in MongoDB
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );

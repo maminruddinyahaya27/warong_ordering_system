@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 
+import BulkBar from '@/components/BulkBar';
+import useBulkSelection from '@/components/useBulkSelection';
+
 function roleOptions(canManageAllTenants) {
   return canManageAllTenants
     ? ['superadmin', 'owner', 'staff']
@@ -27,6 +30,11 @@ export default function UserManager({ initial }) {
     tenant: '',
   });
   const [busy, setBusy] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selected, count, isSelected, toggle, replace, clear } =
+    useBulkSelection();
+
+  const selectableUsers = users.filter((user) => user.id !== currentUserId);
 
   async function load() {
     setLoading(true);
@@ -92,6 +100,35 @@ export default function UserManager({ initial }) {
     }
   }
 
+  async function bulkDeleteUsers() {
+    if (!window.confirm(`Delete ${count} account(s)? This cannot be undone.`)) {
+      return;
+    }
+    setBulkBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch('/api/users/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selected }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Bulk delete failed');
+      setNotice(
+        data.blocked?.length
+          ? `${data.deleted} deleted · skipped: ${data.blocked.join(', ')}`
+          : `${data.deleted} account(s) deleted`
+      );
+      clear();
+      await load();
+    } catch (deleteError) {
+      setError(deleteError.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function removeUser(user) {
     if (!window.confirm(`Delete ${user.username}? This cannot be undone.`)) return;
     setError('');
@@ -140,6 +177,13 @@ export default function UserManager({ initial }) {
     <>
       {error ? <div className="notice notice-error">{error}</div> : null}
       {notice ? <div className="notice">{notice}</div> : null}
+      <BulkBar
+        count={count}
+        busy={bulkBusy}
+        onClear={clear}
+        onDelete={bulkDeleteUsers}
+        noun="account"
+      />
 
       <section className="card">
         <header>
@@ -228,6 +272,22 @@ export default function UserManager({ initial }) {
               <table className="data">
                 <thead>
                   <tr>
+                    <th style={{ width: 34 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all users"
+                        checked={
+                          count > 0 && count === selectableUsers.length
+                        }
+                        onChange={(event) =>
+                          replace(
+                            event.target.checked
+                              ? selectableUsers.map((user) => user.id)
+                              : []
+                          )
+                        }
+                      />
+                    </th>
                     <th>User</th>
                     <th>Role</th>
                     <th>Restaurant</th>
@@ -241,6 +301,16 @@ export default function UserManager({ initial }) {
                     const isSelf = user.id === currentUserId;
                     return (
                       <tr key={user.id}>
+                        <td>
+                          {!isSelf ? (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${user.username}`}
+                              checked={isSelected(user.id)}
+                              onChange={() => toggle(user.id)}
+                            />
+                          ) : null}
+                        </td>
                         <td>
                           <div>
                             {user.name || user.username}

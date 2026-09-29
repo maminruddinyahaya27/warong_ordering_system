@@ -3,6 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import BulkBar from '@/components/BulkBar';
+import useBulkSelection from '@/components/useBulkSelection';
+
 export default function StationManager({ stations }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState({});
@@ -10,6 +13,11 @@ export default function StationManager({ stations }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selected, count, isSelected, toggle, replace, clear } =
+    useBulkSelection();
+
+  const deletable = stations.filter((station) => !station.orphan);
 
   function draftFor(station) {
     return (
@@ -118,10 +126,47 @@ export default function StationManager({ stations }) {
     }
   }
 
+  async function bulkDeleteStations() {
+    if (
+      !window.confirm(
+        `Delete ${count} station(s)? Stations still used by menu items are skipped.`
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await request('/api/stations/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ ids: selected }),
+      });
+      setNotice(
+        data.blocked?.length
+          ? `${data.deleted} deleted · skipped: ${data.blocked.join(', ')}`
+          : `${data.deleted} station(s) deleted`
+      );
+      clear();
+      router.refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <div className="stack">
       {error ? <div className="notice notice-error">{error}</div> : null}
       {notice ? <div className="notice notice-ok">{notice}</div> : null}
+      <BulkBar
+        count={count}
+        busy={bulkBusy}
+        onClear={clear}
+        onDelete={bulkDeleteStations}
+        noun="station"
+      />
 
       <section className="card">
         <header>
@@ -137,6 +182,20 @@ export default function StationManager({ stations }) {
               <table className="data">
                 <thead>
                   <tr>
+                    <th style={{ width: 34 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all stations"
+                        checked={count > 0 && count === deletable.length}
+                        onChange={(event) =>
+                          replace(
+                            event.target.checked
+                              ? deletable.map((station) => station.id)
+                              : []
+                          )
+                        }
+                      />
+                    </th>
                     <th>Name</th>
                     <th>Printer</th>
                     <th>Items</th>
@@ -152,6 +211,16 @@ export default function StationManager({ stations }) {
 
                     return (
                       <tr key={station.id}>
+                        <td>
+                          {!isOrphan ? (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${station.name}`}
+                              checked={isSelected(station.id)}
+                              onChange={() => toggle(station.id)}
+                            />
+                          ) : null}
+                        </td>
                         <td>
                           <input
                             type="text"

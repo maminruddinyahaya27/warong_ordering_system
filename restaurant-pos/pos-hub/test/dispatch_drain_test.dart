@@ -14,6 +14,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    PrintQueueDb.overridePath = inMemoryDatabasePath;
     final db = await PrintQueueDb.instance.database;
     await db.delete('jobs');
     await db.delete('order_items');

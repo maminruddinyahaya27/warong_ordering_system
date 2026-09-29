@@ -402,19 +402,123 @@ class _OrderScreenState extends State<OrderScreen> {
     });
   }
 
+  static const List<String> _sweetnessLevels = [
+    'Normal',
+    'Less sugar',
+    'No sugar',
+  ];
+
+  Future<String?> _askSweetness(String itemName) {
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(itemName),
+        content: const Text('Sweetness level?'),
+        actions: _sweetnessLevels
+            .map(
+              (level) => TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(level),
+                child: Text(level),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  /// Drinks ask for a sweetness level first; the same drink with a different
+  /// level becomes its own order line.
   void _addItem(MenuItem item) {
     if (!item.available) {
       _snack('${item.name} is sold out');
       return;
     }
+    if (item.isDrink) {
+      _askSweetness(item.name).then((level) {
+        if (!mounted || level == null) return;
+        _addItemWithNote(item, level == 'Normal' ? '' : level);
+        _maybeAddOns(item);
+      });
+      return;
+    }
+    _addItemWithNote(item, '');
+    _maybeAddOns(item);
+  }
+
+  /// Offers the add-on groups of [parent] (e.g. a Roti Canai offers Lauk-pauk
+  /// curries). Picked extras print on the parent's station.
+  Future<void> _maybeAddOns(MenuItem parent) async {
+    final options = _menu
+        .where((item) =>
+            item.available &&
+            item.addOnFor.isNotEmpty &&
+            item.addOnFor.split('|').contains(parent.category))
+        .toList();
+    if (options.isEmpty || !mounted) return;
+
+    final added = <String>[];
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Add on to ${parent.name}?'),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  added.isEmpty
+                      ? 'Optional — pick any extras, or skip.'
+                      : 'Added: ${added.join(', ')}',
+                  style: const TextStyle(fontSize: 12, color: kMuted),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: options
+                        .map(
+                          (option) => ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(option.name),
+                            trailing: const Icon(Icons.add_circle_outline),
+                            onTap: () {
+                              _addItemWithNote(option, '');
+                              setDialogState(() => added.add(option.name));
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(added.isEmpty ? 'No add-on' : 'Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _addItemWithNote(MenuItem item, String note) {
     setState(() {
-      final index = _items.indexWhere((i) => i.name == item.name);
+      final index =
+          _items.indexWhere((i) => i.name == item.name && i.note == note);
       if (index >= 0) {
         _items[index] = OrderItem(
           name: item.name,
           qty: _items[index].qty + 1,
           price: item.price,
           station: item.station,
+          note: note,
         );
       } else {
         _items.add(OrderItem(
@@ -422,14 +526,15 @@ class _OrderScreenState extends State<OrderScreen> {
           qty: 1,
           price: item.price,
           station: item.station,
+          note: note,
         ));
       }
     });
   }
 
-  void _changeQty(String name, int delta) {
+  void _changeQty(String name, String note, int delta) {
     setState(() {
-      final index = _items.indexWhere((i) => i.name == name);
+      final index = _items.indexWhere((i) => i.name == name && i.note == note);
       if (index < 0) return;
       final next = _items[index].qty + delta;
       if (next <= 0) {
@@ -440,13 +545,14 @@ class _OrderScreenState extends State<OrderScreen> {
           qty: next,
           price: _items[index].price,
           station: _items[index].station,
+          note: note,
         );
       }
     });
   }
 
-  void _removeItem(String name) {
-    setState(() => _items.removeWhere((i) => i.name == name));
+  void _removeItem(String name, String note) {
+    setState(() => _items.removeWhere((i) => i.name == name && i.note == note));
   }
 
   void _clearOrder() {
@@ -485,6 +591,7 @@ class _OrderScreenState extends State<OrderScreen> {
               'name': i.name,
               'price': i.price,
               'station': i.station,
+              'note': i.note,
             })
         .toList();
 
@@ -1192,24 +1299,26 @@ class _OrderScreenState extends State<OrderScreen> {
       dense: true,
       contentPadding: EdgeInsets.zero,
       title: Text(item.name),
-      subtitle: Text(item.station,
-          style: const TextStyle(fontSize: 11, color: kMuted)),
+      subtitle: Text(
+        item.note.isEmpty ? item.station : '${item.station} · ${item.note}',
+        style: const TextStyle(fontSize: 11, color: kMuted),
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
             icon: const Icon(Icons.remove_circle_outline),
-            onPressed: () => _changeQty(item.name, -1),
+            onPressed: () => _changeQty(item.name, item.note, -1),
           ),
           Text('${item.qty}',
               style: const TextStyle(fontWeight: FontWeight.bold)),
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
-            onPressed: () => _changeQty(item.name, 1),
+            onPressed: () => _changeQty(item.name, item.note, 1),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: () => _removeItem(item.name),
+            onPressed: () => _removeItem(item.name, item.note),
           ),
         ],
       ),

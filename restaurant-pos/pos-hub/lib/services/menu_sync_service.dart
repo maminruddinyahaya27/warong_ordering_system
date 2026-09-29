@@ -36,6 +36,18 @@ class MenuSyncService {
     }
   }
 
+  /// The portal sends the parent group names as a list; store them joined with
+  /// `|` so the SQLite column stays a simple string.
+  static String _joinAddOns(Object? raw) {
+    if (raw is List) {
+      return raw
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty)
+          .join('|');
+    }
+    return (raw ?? '').toString();
+  }
+
   /// Builds the export URL from the configured portal base, tolerating a base
   /// that already points at `/api/export`.
   static String exportUrl(String base) {
@@ -152,6 +164,8 @@ class MenuSyncService {
       category: (entry['group'] ?? entry['category'] ?? 'MENU').toString(),
       available: entry['available'] != false,
       color: (entry['groupColor'] ?? entry['color'] ?? '').toString(),
+      options: (entry['options'] ?? '').toString(),
+      addOnFor: _joinAddOns(entry['addOnFor']),
     );
   }
 }

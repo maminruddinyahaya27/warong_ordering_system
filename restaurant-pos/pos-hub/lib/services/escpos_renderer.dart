@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
+import 'app_settings.dart';
+
 /// Renders kitchen tickets and customer receipts into ESC/POS bytes for
 /// 58mm MPT-11 / MPT-58 printers.
 class EscPosRenderer {
@@ -11,6 +13,29 @@ class EscPosRenderer {
 
   static Future<CapabilityProfile> _profile() =>
       CapabilityProfile.load(name: _profileName);
+
+  /// Ticket body height, from Settings → Printing → Ticket text size.
+  static PosTextSize _ticketHeight() =>
+      switch (SettingsStore.instance.ticketTextSize) {
+        'normal' => PosTextSize.size1,
+        'huge' => PosTextSize.size3,
+        _ => PosTextSize.size2,
+      };
+
+  /// Ticket body width. Kept at 1x for 'large' so the 32-column layout (and the
+  /// dashed rules) still fit; 'huge' doubles it when maximum size is wanted.
+  static PosTextSize _ticketWidth() =>
+      switch (SettingsStore.instance.ticketTextSize) {
+        'normal' => PosTextSize.size1,
+        'huge' => PosTextSize.size2,
+        _ => PosTextSize.size1,
+      };
+
+  static bool _isRule(String line) {
+    final trimmed = line.trim();
+    return trimmed.length >= 3 &&
+        trimmed.split('').every((char) => char == '-');
+  }
 
   /// Station order ticket (no prices).
   static Future<Uint8List> renderOrder(String station, String payload) async {
@@ -28,12 +53,25 @@ class EscPosRenderer {
     out.addAll(generator.setStyles(const PosStyles(
       align: PosAlign.center,
       bold: true,
+      height: PosTextSize.size2,
+      width: PosTextSize.size2,
     )));
     out.addAll(generator.text('[$station]'));
 
-    out.addAll(generator.setStyles(const PosStyles(align: PosAlign.left)));
+    // Body: enlarged per the ticket size setting. Dashed rules stay at 1x so
+    // they never wrap when the body is doubled in width.
+    final bodyStyle = PosStyles(
+      align: PosAlign.left,
+      bold: true,
+      height: _ticketHeight(),
+      width: _ticketWidth(),
+    );
+    const ruleStyle = PosStyles(align: PosAlign.left);
+
+    out.addAll(generator.setStyles(ruleStyle));
     out.addAll(generator.hr());
     for (final line in const LineSplitter().convert(payload)) {
+      out.addAll(generator.setStyles(_isRule(line) ? ruleStyle : bodyStyle));
       out.addAll(generator.text(line));
     }
 

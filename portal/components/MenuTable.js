@@ -4,12 +4,18 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import BulkBar from '@/components/BulkBar';
+import useBulkSelection from '@/components/useBulkSelection';
+
 export default function MenuTable({ items, currency, showGroup = true }) {
   const router = useRouter();
   const [draftPrices, setDraftPrices] = useState({});
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selected, count, isSelected, toggle, replace, clear } =
+    useBulkSelection();
 
   function priceValue(item) {
     if (draftPrices[item.id] !== undefined) return draftPrices[item.id];
@@ -106,6 +112,32 @@ export default function MenuTable({ items, currency, showGroup = true }) {
     }
   }
 
+  async function bulkDelete() {
+    if (
+      !window.confirm(
+        `Delete ${count} menu item(s)? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await request('/api/menu/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ ids: selected }),
+      });
+      setNotice(`${data.deleted} menu item(s) deleted`);
+      clear();
+      router.refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   if (items.length === 0) {
     return (
       <div className="empty">
@@ -119,11 +151,32 @@ export default function MenuTable({ items, currency, showGroup = true }) {
     <div className="card-body tight">
       {error ? <div className="notice notice-error" style={{ margin: 16 }}>{error}</div> : null}
       {notice ? <div className="notice notice-ok" style={{ margin: 16 }}>{notice}</div> : null}
+      {count > 0 ? (
+        <div style={{ margin: 16 }}>
+          <BulkBar
+            count={count}
+            busy={bulkBusy}
+            onClear={clear}
+            onDelete={bulkDelete}
+            noun="menu item"
+          />
+        </div>
+      ) : null}
 
       <div className="table-scroll">
         <table className="data">
           <thead>
             <tr>
+              <th style={{ width: 34 }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all menu items"
+                  checked={count > 0 && count === items.length}
+                  onChange={(event) =>
+                    replace(event.target.checked ? items.map((item) => item.id) : [])
+                  }
+                />
+              </th>
               <th>SKU</th>
               <th>Item</th>
               <th>Station</th>
@@ -140,6 +193,14 @@ export default function MenuTable({ items, currency, showGroup = true }) {
 
               return (
                 <tr key={item.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${item.name}`}
+                      checked={isSelected(item.id)}
+                      onChange={() => toggle(item.id)}
+                    />
+                  </td>
                   <td className="mono small">{item.sku}</td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{item.name}</div>
