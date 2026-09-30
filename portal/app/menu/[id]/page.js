@@ -56,8 +56,14 @@ async function loadItem(id) {
   };
 }
 
-export default async function MenuItemDetailPage({ params }) {
+export default async function MenuItemDetailPage({ params, searchParams }) {
   const { id } = await params;
+  const resolvedSearch = (await searchParams) || {};
+  // Where to return after saving: the menu list with its filters intact.
+  const returnTo =
+    typeof resolvedSearch.from === 'string' && resolvedSearch.from.startsWith('/menu')
+      ? resolvedSearch.from
+      : '/menu';
 
   let data = null;
   let error = null;
@@ -111,6 +117,7 @@ export default async function MenuItemDetailPage({ params }) {
           stations={stations}
           groups={groups}
           currency={currency}
+          returnTo={returnTo}
         />
 
         <section className="card">

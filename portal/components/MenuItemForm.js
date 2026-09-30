@@ -28,6 +28,9 @@ export default function MenuItemForm({
   groups = [],
   defaultGroupId = '',
   currency = 'RM',
+  /// Where to go after saving/cancelling — the list URL with its filters, so an
+  /// edit does not drop the search/group/station you were working in.
+  returnTo = '/menu',
 }) {
   const router = useRouter();
   const mode = item ? 'edit' : 'create';
@@ -88,7 +91,7 @@ export default function MenuItemForm({
       if (!response.ok) {
         throw new Error(data.error || `Request failed (${response.status})`);
       }
-      router.push('/menu');
+      router.push(returnTo || '/menu');
       router.refresh();
     } catch (requestError) {
       setError(requestError.message);
@@ -109,7 +112,7 @@ export default function MenuItemForm({
       if (!response.ok) {
         throw new Error(data.error || `Request failed (${response.status})`);
       }
-      router.push('/menu');
+      router.push(returnTo || '/menu');
       router.refresh();
     } catch (requestError) {
       setError(requestError.message);
@@ -356,7 +359,7 @@ export default function MenuItemForm({
         <button className="btn btn-primary" type="submit" disabled={saving || deleting}>
           {saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create item'}
         </button>
-        <Link className="btn" href="/menu">
+        <Link className="btn" href={returnTo || '/menu'}>
           Cancel
         </Link>
         {mode === 'edit' ? (

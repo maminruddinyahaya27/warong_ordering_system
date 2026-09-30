@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
 import BulkBar from '@/components/BulkBar';
@@ -9,6 +9,14 @@ import useBulkSelection from '@/components/useBulkSelection';
 
 export default function MenuTable({ items, currency, showGroup = true }) {
   const router = useRouter();
+  // Carry the current filters through an edit, so saving returns to the same
+  // filtered list instead of dropping the search/group/station.
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  const listUrl = query ? `/menu?${query}` : '/menu';
+  const editUrl = (id) =>
+    `/menu/${id}?from=${encodeURIComponent(listUrl)}`;
+  const newUrl = `/menu/new?from=${encodeURIComponent(listUrl)}`;
   const [draftPrices, setDraftPrices] = useState({});
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
@@ -141,7 +149,7 @@ export default function MenuTable({ items, currency, showGroup = true }) {
   if (items.length === 0) {
     return (
       <div className="empty">
-        No menu items match this filter. <Link href="/menu/new">Add one</Link> or{' '}
+        No menu items match this filter. <Link href={newUrl}>Add one</Link> or{' '}
         <Link href="/menu">clear the filters</Link>.
       </div>
     );
@@ -272,7 +280,7 @@ export default function MenuTable({ items, currency, showGroup = true }) {
                       >
                         {item.available ? 'Mark sold out' : 'Mark available'}
                       </button>
-                      <Link className="btn btn-sm" href={`/menu/${item.id}`}>
+                      <Link className="btn btn-sm" href={editUrl(item.id)}>
                         Edit
                       </Link>
                       <button

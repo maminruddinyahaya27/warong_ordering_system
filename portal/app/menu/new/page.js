@@ -40,6 +40,11 @@ export default async function NewMenuItemPage({ searchParams }) {
   const resolved = (await searchParams) || {};
   const defaultGroupId =
     typeof resolved.group === 'string' ? resolved.group : '';
+  // Where to return after saving: the menu list with its filters intact.
+  const returnTo =
+    typeof resolved.from === 'string' && resolved.from.startsWith('/menu')
+      ? resolved.from
+      : '/menu';
 
   let data = null;
   let error = null;
@@ -70,6 +75,7 @@ export default async function NewMenuItemPage({ searchParams }) {
           groups={data.groups}
           defaultGroupId={defaultGroupId}
           currency={data.currency}
+          returnTo={returnTo}
         />
       )}
     </>
