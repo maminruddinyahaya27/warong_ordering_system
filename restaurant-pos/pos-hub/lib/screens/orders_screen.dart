@@ -13,12 +13,9 @@ import '../widgets/receipt_prompt.dart';
 import '../widgets/settle_order.dart';
 
 /// Open orders list — the counter's main screen. Tapping a row opens the order
-/// for amending; Close settles it.
+/// for amending; Close settles it. The search box filters the bills by table.
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key, this.onNewOrder});
-
-  /// Switches to the Order tab (the menu) to start a new order.
-  final VoidCallback? onNewOrder;
+  const OrdersScreen({super.key});
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -32,6 +29,57 @@ class _OrdersScreenState extends State<OrdersScreen> {
   List<Order> _orders = [];
   bool _loading = true;
   Timer? _refresh;
+
+  /// Filters the open bills by table number.
+  final TextEditingController _query = TextEditingController();
+
+  /// The table's number when its label is a number — `5`, `05`, `T5` or
+  /// `Table 5` — or null for a named table such as `VIP 2`.
+  static int? _tableNumber(String table) {
+    final label = table
+        .toLowerCase()
+        .trim()
+        .replaceFirst(RegExp(r'^(table|t)\s*'), '');
+    if (label.isEmpty || label.length > 6) return null;
+    if (!RegExp(r'^[0-9]+$').hasMatch(label)) return null;
+    return int.parse(label);
+  }
+
+  /// The bills the search box currently shows, ordered by table number.
+  ///
+  /// A number finds the table with that number, while other text is matched
+  /// loosely (`vip` finds `VIP 2`). The order number is never matched: it ends
+  /// with the table number (`YYMMDD-NNN-TABLE`), which made every search hit
+  /// every bill.
+  List<Order> get _visibleOrders {
+    final needle = _query.text.trim().toLowerCase();
+    final needleNumber = _tableNumber(needle);
+    final matches = needle.isEmpty
+        ? List<Order>.of(_orders)
+        : _orders.where((order) {
+            final table = order.tableNo.trim().toLowerCase();
+            if (needleNumber == null) return table.contains(needle);
+            return _tableNumber(table) == needleNumber;
+          }).toList();
+    matches.sort(_byTable);
+    return matches;
+  }
+
+  /// Table number ascending — numbered tables first, then named ones, with
+  /// take-away bills (no table) at the bottom.
+  static int _byTable(Order a, Order b) {
+    final tableA = a.tableNo.trim();
+    final tableB = b.tableNo.trim();
+    if (tableA.isEmpty != tableB.isEmpty) return tableA.isEmpty ? 1 : -1;
+    final numberA = _tableNumber(tableA);
+    final numberB = _tableNumber(tableB);
+    if ((numberA != null) != (numberB != null)) return numberA != null ? -1 : 1;
+    if (numberA != null && numberB != null && numberA != numberB) {
+      return numberA.compareTo(numberB);
+    }
+    final byText = tableA.toLowerCase().compareTo(tableB.toLowerCase());
+    return byText != 0 ? byText : a.orderNo.compareTo(b.orderNo);
+  }
 
   @override
   void initState() {
@@ -47,6 +95,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   void dispose() {
     _refresh?.cancel();
     AppEvents.ordersRevision.removeListener(_load);
+    _query.dispose();
     super.dispose();
   }
 
@@ -452,33 +501,40 @@ class _OrdersScreenState extends State<OrdersScreen> {
       child: ListView(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Row(
-              children: [
-                Text(
-                  'Open orders (${_orders.length})',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-                const Spacer(),
-                if (widget.onNewOrder != null)
-                  FilledButton.icon(
-                    onPressed: widget.onNewOrder,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New order'),
-                  ),
-              ],
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              controller: _query,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Search table',
+                hintText: 'Table number',
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                isDense: true,
+                suffixIcon: _query.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear',
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => setState(_query.clear),
+                      ),
+              ),
+              onChanged: (_) => setState(() {}),
             ),
           ),
-          if (_orders.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(40),
-              child: Center(child: Text('No open orders')),
+          if (_visibleOrders.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(40),
+              child: Center(
+                child: Text(
+                  _query.text.trim().isEmpty
+                      ? 'No open orders'
+                      : 'No open order for table "${_query.text.trim()}"',
+                ),
+              ),
             )
           else
-            ..._orders.map((order) => Card(
+            ..._visibleOrders.map((order) => Card(
                   margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                   child: ListTile(
                     leading: CircleAvatar(

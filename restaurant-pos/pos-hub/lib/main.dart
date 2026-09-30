@@ -443,12 +443,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         onPointerDown: (_) => ScreenAwake.instance.noteInteraction(),
         child: IndexedStack(
           index: _index,
-          children: [
+          children: const [
             // Main page: the open order list (bills to settle).
-            OrdersScreen(onNewOrder: () => setState(() => _index = 1)),
+            OrdersScreen(),
             // Menu page: build an order from the catalogue.
-            const CounterScreen(),
-            const QueueScreen(),
+            CounterScreen(),
+            QueueScreen(),
           ],
         ),
       ),
