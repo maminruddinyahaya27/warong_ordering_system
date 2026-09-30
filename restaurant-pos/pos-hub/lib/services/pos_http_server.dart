@@ -163,6 +163,7 @@ class PosHttpServer {
                 'color': p.color,
                 'options': p.options,
                 'addOnFor': p.addOnFor,
+                'requireAddOn': p.requireAddOn,
                 'available': p.available,
               })
           .toList(),

@@ -108,6 +108,14 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
       });
       return;
     }
+    // Dishes sold with a choice (Nasi Lemak + Lauk) cannot be ordered without
+    // one; say so instead of adding an incomplete item.
+    if (item.requireAddOn) {
+      setError(
+        `${item.name} needs an add-on, but none is available right now.`
+      );
+      return;
+    }
     if (isDrink(item) && (optionHas(item, 'sugar') || optionHas(item, 'ice'))) {
       setModal({
         type: 'drink',
@@ -701,8 +709,13 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                     </button>
                   </div>
 
-                  <div className="muted small" style={{ marginTop: 10 }}>
-                    Add on (optional)
+                  <div
+                    className="muted small"
+                    style={{ marginTop: 10, color: modal.item.requireAddOn ? '#b45309' : undefined }}
+                  >
+                    {modal.item.requireAddOn
+                      ? 'Add on — pick at least one to continue'
+                      : 'Add on (optional)'}
                   </div>
                   <div>
                     {modal.options.map((option) => {
@@ -780,6 +793,11 @@ export default function CustomerOrder({ tenantRef, tableToken }) {
                 <button
                   type="button"
                   className="btn btn-primary"
+                  disabled={
+                    modal.type === 'bundle' &&
+                    modal.item.requireAddOn &&
+                    Object.values(modal.qty).every((qty) => qty <= 0)
+                  }
                   onClick={modal.type === 'drink' ? confirmDrink : confirmBundle}
                 >
                   {modal.type === 'drink' ? 'Add' : 'Add to order'}

@@ -25,6 +25,9 @@ const MenuItemSchema = new mongoose.Schema(
     // Roti Canai prints at the griddle; Sambal Sardin is left empty and stays
     // in the kitchen).
     addOnFor: { type: [String], default: [] },
+    // When true the item cannot be ordered on its own: an add-on must be picked
+    // first (e.g. Nasi Lemak + Lauk).
+    requireAddOn: { type: Boolean, default: false },
     description: { type: String, default: '', trim: true },
     available: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },

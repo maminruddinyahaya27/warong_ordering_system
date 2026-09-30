@@ -17,6 +17,9 @@ class Product {
   /// When both groups are on one order the add-on prints on that station.
   final String addOnFor;
 
+  /// The item must be ordered with one of its add-ons (e.g. Nasi Lemak + Lauk).
+  final bool requireAddOn;
+
   /// Position in the portal feed. Preserves the portal's group order (and the
   /// order of items within a group) instead of falling back to alphabetical.
   final int sortOrder;
@@ -31,6 +34,7 @@ class Product {
     this.color = '',
     this.options = '',
     this.addOnFor = '',
+    this.requireAddOn = false,
     this.sortOrder = 0,
   });
 
@@ -51,6 +55,7 @@ class Product {
         'color': color,
         'options': options,
         'add_on_for': addOnFor,
+        'require_add_on': requireAddOn ? 1 : 0,
         'sort_order': sortOrder,
       };
 
@@ -64,6 +69,7 @@ class Product {
         color: map['color'] as String? ?? '',
         options: map['options'] as String? ?? '',
         addOnFor: map['add_on_for'] as String? ?? '',
+        requireAddOn: (map['require_add_on'] as int? ?? 0) == 1,
         sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
       );
 
@@ -77,6 +83,7 @@ class Product {
         color: color,
         options: options,
         addOnFor: addOnFor,
+        requireAddOn: requireAddOn,
         sortOrder: order,
       );
 }

@@ -510,6 +510,11 @@ class _OrderScreenState extends State<OrderScreen> {
 
     final addOns = _addOnItemsFor(item);
     if (addOns.isEmpty) {
+      // A required add-on with nothing to choose from cannot be ordered.
+      if (item.requireAddOn) {
+        _snack('${item.name} needs an add-on, but none are configured');
+        return;
+      }
       _addItemWithNote(item, '');
       return;
     }
@@ -580,8 +585,15 @@ class _OrderScreenState extends State<OrderScreen> {
                     (value) => setDialogState(() => parentQty = value),
                   ),
                   const Divider(),
-                  const Text('Add on',
-                      style: TextStyle(fontSize: 12, color: kMuted)),
+                  Text(
+                    parent.requireAddOn
+                        ? 'Add on — pick at least one to continue'
+                        : 'Add on',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: parent.requireAddOn ? kWarn : kMuted,
+                    ),
+                  ),
                   Flexible(
                     child: ListView(
                       shrinkWrap: true,
@@ -611,7 +623,9 @@ class _OrderScreenState extends State<OrderScreen> {
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                onPressed: parentQty <= 0
+                onPressed: parentQty <= 0 ||
+                        (parent.requireAddOn &&
+                            chosen.values.every((qty) => qty <= 0))
                     ? null
                     : () => Navigator.of(dialogContext)
                         .pop((parentQty: parentQty, addOnQty: Map.of(chosen))),
@@ -1423,10 +1437,12 @@ class _OrderScreenState extends State<OrderScreen> {
       dense: true,
       contentPadding: EdgeInsets.zero,
       title: Text(item.name),
-      subtitle: Text(
-        item.note.isEmpty ? item.station : '${item.station} · ${item.note}',
-        style: const TextStyle(fontSize: 11, color: kMuted),
-      ),
+      // The station is an internal detail; only the note (e.g. drink options)
+      // is worth showing under an order line.
+      subtitle: item.note.isEmpty
+          ? null
+          : Text(item.note,
+              style: const TextStyle(fontSize: 11, color: kMuted)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -15,6 +15,7 @@ function initialForm(item, defaultGroupId) {
     askSugar: (item?.options || '').split(',').includes('sugar'),
     askIce: (item?.options || '').split(',').includes('ice'),
     addOnFor: Array.isArray(item?.addOnFor) ? item.addOnFor : [],
+    requireAddOn: item?.requireAddOn === true,
     description: item?.description || '',
     available: item?.available !== false,
     sortOrder: item?.sortOrder ?? 0,
@@ -67,6 +68,7 @@ export default function MenuItemForm({
             .join(',')
         : '',
       addOnFor: form.addOnFor || [],
+      requireAddOn: form.requireAddOn === true,
       description: form.description,
       available: form.available,
       sortOrder: Number(form.sortOrder) || 0,
@@ -257,6 +259,26 @@ export default function MenuItemForm({
                 Griddle). Leave empty to always use its own station.
               </span>
             </div>
+
+            <label className="field">
+              <span>Requires an add-on</span>
+              <span className="field-row">
+                <input
+                  type="checkbox"
+                  checked={form.requireAddOn}
+                  onChange={(event) =>
+                    update('requireAddOn', event.target.checked)
+                  }
+                />
+                <span className="small">
+                  Must pick an add-on before this item can be ordered
+                </span>
+              </span>
+              <span className="hint">
+                For dishes sold with a choice, e.g. Nasi Lemak + Lauk. The
+                ordering apps will not add this item until an add-on is picked.
+              </span>
+            </label>
 
             <label className="field">
               <span>Sort order</span>

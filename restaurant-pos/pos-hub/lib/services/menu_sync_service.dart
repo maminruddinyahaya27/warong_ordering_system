@@ -180,6 +180,7 @@ class MenuSyncService {
       color: (entry['groupColor'] ?? entry['color'] ?? '').toString(),
       options: (entry['options'] ?? '').toString(),
       addOnFor: _joinAddOns(entry['addOnFor']),
+      requireAddOn: entry['requireAddOn'] == true,
     );
   }
 }

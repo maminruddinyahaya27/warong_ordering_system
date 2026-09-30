@@ -9,7 +9,7 @@ class PrintQueueDb {
   static final PrintQueueDb instance = PrintQueueDb._internal();
   PrintQueueDb._internal();
 
-  static const int _version = 14;
+  static const int _version = 15;
 
   /// Tests set this to `inMemoryDatabasePath` so each test file gets its own
   /// database instead of sharing the on-disk one (which made state-dependent
@@ -99,6 +99,10 @@ class PrintQueueDb {
         await db.execute(
             'ALTER TABLE order_items ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
       }
+      if (oldV < 15) {
+        await db.execute(
+            'ALTER TABLE products ADD COLUMN require_add_on INTEGER NOT NULL DEFAULT 0');
+      }
     });
   }
 
@@ -139,6 +143,7 @@ class PrintQueueDb {
         color TEXT,
         options TEXT,
         add_on_for TEXT,
+        require_add_on INTEGER NOT NULL DEFAULT 0,
         sort_order INTEGER,
         updated_at INTEGER
       )
@@ -386,6 +391,7 @@ class PrintQueueDb {
           'color': p.color,
           'options': p.options,
           'add_on_for': p.addOnFor,
+          'require_add_on': p.requireAddOn ? 1 : 0,
           'sort_order': p.sortOrder,
           'updated_at': now,
         }, conflictAlgorithm: ConflictAlgorithm.replace);

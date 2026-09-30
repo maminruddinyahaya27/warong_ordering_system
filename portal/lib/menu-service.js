@@ -156,6 +156,7 @@ export function serializeMenuItem(doc) {
     group: item.groupName || '',
     options: item.options || '',
     addOnFor: Array.isArray(item.addOnFor) ? item.addOnFor : [],
+    requireAddOn: item.requireAddOn === true,
     description: item.description || '',
     available: item.available !== false,
     sortOrder: item.sortOrder ?? 0,

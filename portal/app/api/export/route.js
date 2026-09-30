@@ -45,6 +45,8 @@ function toArrayEntry(item, colorByName, stationByName) {
   // the parent is on the same order.
   const addOnFor = item.addOnFor || [];
   if (addOnFor.length) entry.addOnFor = addOnFor;
+  // The item must be ordered with an add-on (e.g. Nasi Lemak + Lauk).
+  if (item.requireAddOn === true) entry.requireAddOn = true;
   if (item.options) entry.options = item.options;
   return entry;
 }

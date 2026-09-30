@@ -92,6 +92,7 @@ export async function buildPublicMenu(tenant, table) {
       group: item.groupName || UNGROUPED_LABEL,
       options: item.options || '',
       addOnFor: Array.isArray(item.addOnFor) ? item.addOnFor : [],
+      requireAddOn: item.requireAddOn === true,
     })),
   };
 }

@@ -236,6 +236,11 @@ class _CounterScreenState extends State<CounterScreen> {
 
     final addOns = _addOnProductsFor(product);
     if (addOns.isEmpty) {
+      // A required add-on with nothing to choose from cannot be ordered.
+      if (product.requireAddOn) {
+        _snack('${product.name} needs an add-on, but none are configured');
+        return;
+      }
       _addWithNote(product, '');
       return;
     }
@@ -307,8 +312,17 @@ class _CounterScreenState extends State<CounterScreen> {
                     (value) => setDialogState(() => parentQty = value),
                   ),
                   const Divider(),
-                  const Text('Add on',
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(
+                    parent.requireAddOn
+                        ? 'Add on — pick at least one to continue'
+                        : 'Add on',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: parent.requireAddOn
+                          ? Colors.orange.shade800
+                          : Colors.grey,
+                    ),
+                  ),
                   Flexible(
                     child: ListView(
                       shrinkWrap: true,
@@ -338,7 +352,9 @@ class _CounterScreenState extends State<CounterScreen> {
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                onPressed: parentQty <= 0
+                onPressed: parentQty <= 0 ||
+                        (parent.requireAddOn &&
+                            chosen.values.every((qty) => qty <= 0))
                     ? null
                     : () => Navigator.of(dialogContext)
                         .pop((parentQty: parentQty, addOnQty: Map.of(chosen))),
@@ -1091,12 +1107,14 @@ class _CounterScreenState extends State<CounterScreen> {
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       title: Text(line.product.name),
-      subtitle: Text(
-        line.note.isEmpty
-            ? line.product.station
-            : '${line.product.station} · ${line.note}',
-        style: const TextStyle(fontSize: 11, color: Colors.grey),
-      ),
+      // The station is an internal detail; only the note (e.g. drink options)
+      // is worth showing under a cart line.
+      subtitle: line.note.isEmpty
+          ? null
+          : Text(
+              line.note,
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

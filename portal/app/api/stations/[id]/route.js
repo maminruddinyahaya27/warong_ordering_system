@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/lib/mongodb';
 import Station from '@/lib/models/Station';
 import MenuItem from '@/lib/models/MenuItem';
+import MenuGroup from '@/lib/models/MenuGroup';
 import { findStation } from '@/lib/menu-service';
 import { validateStation } from '@/lib/validate';
 import { withApiError } from '@/lib/api';
@@ -54,12 +55,22 @@ async function updateStation(request, { params }) {
   await station.save();
 
   let renamedItems = 0;
+  let renamedGroups = 0;
   if (values.name && values.name !== previousName) {
-    const result = await MenuItem.updateMany(
+    const itemResult = await MenuItem.updateMany(
       { tenant: tenantId, station: previousName },
       { $set: { station: values.name } }
     );
-    renamedItems = result.modifiedCount || 0;
+    renamedItems = itemResult.modifiedCount || 0;
+
+    // A group can pin its own station, and the export prefers it over the
+    // item's, so the rename has to follow through to groups too — otherwise the
+    // apps keep seeing the old station name.
+    const groupResult = await MenuGroup.updateMany(
+      { tenant: tenantId, station: previousName },
+      { $set: { station: values.name } }
+    );
+    renamedGroups = groupResult.modifiedCount || 0;
   }
 
   return NextResponse.json({
@@ -70,6 +81,7 @@ async function updateStation(request, { params }) {
       sortOrder: station.sortOrder,
     },
     renamedItems,
+    renamedGroups,
   });
 }
 

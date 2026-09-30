@@ -73,6 +73,10 @@ export function validateMenuItem(body, { partial = false } = {}) {
     }
   }
 
+  if (body.requireAddOn !== undefined) {
+    values.requireAddOn = body.requireAddOn === true;
+  }
+
   if (body.description !== undefined) {
     values.description = String(body.description ?? '').trim().slice(0, 400);
   }

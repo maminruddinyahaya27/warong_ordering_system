@@ -80,20 +80,13 @@ class _HubScreenState extends State<HubScreen> {
   bool _syncing = false;
   Timer? _refreshTimer;
 
-  /// Used until the catalogue is synced, so the UI always has stations.
-  static const List<String> _fallbackStations = [
-    'Griddle',
-    'Kitchen',
-    'Wok',
-    'Beverage',
-  ];
-
   /// Stations actually used by the synced catalogue (matches the portal).
-  List<String> _stations = List.of(_fallbackStations);
+  /// Empty until the first sync — the hub never invents station names.
+  List<String> _stations = [];
 
-  /// False until a sync has produced stations, i.e. the defaults are showing.
+  /// False until a sync has produced stations.
   bool _stationsSynced = false;
-  String _testStation = 'Kitchen';
+  String _testStation = '';
 
   /// Bluetooth lists include phones, watches and headsets. Only devices whose
   /// name looks like a receipt printer are listed unless this is on.
@@ -181,9 +174,10 @@ class _HubScreenState extends State<HubScreen> {
     if (!mounted) return;
     setState(() {
       _stationsSynced = fromCatalog.isNotEmpty;
-      _stations =
-          fromCatalog.isEmpty ? List.of(_fallbackStations) : fromCatalog;
-      if (!_stations.contains(_testStation)) {
+      _stations = fromCatalog;
+      if (_stations.isEmpty) {
+        _testStation = '';
+      } else if (!_stations.contains(_testStation)) {
         _testStation = _stations.first;
       }
     });
@@ -339,6 +333,10 @@ class _HubScreenState extends State<HubScreen> {
   }
 
   Future<void> _testPrint() async {
+    if (_testStation.isEmpty) {
+      _snack('No stations yet — run Sync menu');
+      return;
+    }
     final mac = _stationPrinters[_stationKey(_testStation)];
     if (mac == null) {
       _snack('No printer assigned to $_testStation. Assign one first.');
@@ -493,8 +491,8 @@ Cola x 2
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Text(
-                  'No stations from the menu yet — run "Sync menu". '
-                  'Showing defaults (Griddle, Kitchen, Wok, Beverage).',
+                  'No stations from the menu yet — run "Sync menu" to load the '
+                  'stations this restaurant uses.',
                   style: TextStyle(fontSize: 12, color: Color(0xFFFBBF24)),
                 ),
               ),
@@ -505,17 +503,23 @@ Cola x 2
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
-                    value: _testStation,
+                    value: _stations.contains(_testStation)
+                        ? _testStation
+                        : null,
                     decoration: const InputDecoration(
                       labelText: 'Station',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
+                    hint: Text(_stations.isEmpty
+                        ? 'No stations — run Sync menu'
+                        : 'Station'),
                     items: _stations
                         .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                         .toList(),
-                    onChanged: (v) =>
-                        setState(() => _testStation = v ?? 'KITCHEN'),
+                    onChanged: _stations.isEmpty
+                        ? null
+                        : (v) => setState(() => _testStation = v ?? ''),
                   ),
                 ),
                 const SizedBox(width: 8),

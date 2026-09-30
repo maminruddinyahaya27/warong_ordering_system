@@ -14,6 +14,9 @@ class MenuItem {
   /// ordered with a roti canai prints on the roti station.
   final String addOnFor;
 
+  /// The item must be ordered with one of its add-ons (e.g. Nasi Lemak + Lauk).
+  final bool requireAddOn;
+
   final bool available;
 
   const MenuItem({
@@ -24,6 +27,7 @@ class MenuItem {
     this.color = '',
     this.options = '',
     this.addOnFor = '',
+    this.requireAddOn = false,
     this.available = true,
   });
 
@@ -43,6 +47,7 @@ class MenuItem {
       color: (json['color'] ?? json['groupColor'])?.toString() ?? '',
       options: json['options']?.toString() ?? '',
       addOnFor: json['addOnFor']?.toString() ?? '',
+      requireAddOn: json['requireAddOn'] == true,
       available: json['available'] != false,
     );
   }
