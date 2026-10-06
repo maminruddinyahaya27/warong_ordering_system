@@ -12,6 +12,10 @@ class OrderItem {
   /// Per-line note, e.g. the sweetness level for a drink.
   final String note;
 
+  /// The line this add-on was ordered with; null for a line of its own. The
+  /// order list draws an add-on nested under its parent.
+  final String? parentId;
+
   OrderItem({
     String? id,
     required this.name,
@@ -19,6 +23,7 @@ class OrderItem {
     required this.price,
     this.station = 'KITCHEN',
     this.note = '',
+    this.parentId,
   }) : id = id ?? _nextId();
 
   static int _sequence = 0;

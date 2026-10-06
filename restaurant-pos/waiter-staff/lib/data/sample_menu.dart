@@ -15,5 +15,7 @@ const List<MenuItem> kSampleMenu = [
   MenuItem(name: 'Roti Kosong', station: 'Griddle', category: 'Roti Canai', color: '#6A1B9A'),
   MenuItem(name: 'Roti Telur', station: 'Griddle', category: 'Roti Canai', color: '#6A1B9A'),
   MenuItem(name: 'Roti Sardin', station: 'Griddle', category: 'Roti Canai', color: '#6A1B9A', available: false),
+  // An add-on for the rotis, so the offline demo shows the bundle flow too.
+  MenuItem(name: 'Kari Kambing', station: 'Kitchen', category: 'Lauk-pauk', color: '#2E7D32', addOnFor: 'Roti Canai'),
   MenuItem(name: 'Mee Goreng Mamak', station: 'Wok', category: 'Goreng-goreng', color: '#D84315'),
 ];

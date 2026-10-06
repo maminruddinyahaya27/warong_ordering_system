@@ -26,19 +26,6 @@ const Color kWarnSoft = Color(0x1AFBBF24);
 const Color kWarnLine = Color(0x4DFBBF24);
 const Color kStar = Color(0xFFFFD54F);
 
-/// Items pinned to the quick-picks row on first run (filtered to whatever the
-/// loaded menu actually contains).
-const List<String> kDefaultFavourites = [
-  'Teh O (Panas)',
-  'Teh O (Sejuk)',
-  'Roti Kosong',
-  'Nasi Lemak Biasa',
-  'Kopi O (Panas)',
-  'Milo (Panas)',
-  'Roti Telur',
-  'Mee Goreng Mamak',
-];
-
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const WaiterStaffApp());
@@ -112,7 +99,6 @@ class _OrderScreenState extends State<OrderScreen> {
   String _query = '';
   String _activeGroup = '';
   String _orderType = 'dine_in';
-  List<String> _favs = [];
   bool _orderOpen = false;
 
   final List<OrderItem> _items = [];
@@ -147,7 +133,6 @@ class _OrderScreenState extends State<OrderScreen> {
     HubConfig.menuUrl = prefs.getString('menu_url') ?? '';
     _waiter = prefs.getString('waiter_name') ?? '';
     _activeGroup = prefs.getString('waiter_group') ?? '';
-    _favs = _decodeFavs(prefs.getString('waiter_favs'));
 
     if (HubConfig.hasHost) {
       _checkHost();
@@ -161,17 +146,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
     // Always attempt the menu; a failure falls back to the demo menu.
     await _loadMenu();
-  }
-
-  List<String> _decodeFavs(String? raw) {
-    if (raw == null || raw.isEmpty) return kDefaultFavourites.toList();
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        return decoded.map((e) => e.toString()).toList();
-      }
-    } catch (_) {}
-    return kDefaultFavourites.toList();
   }
 
   Future<void> _persist(String key, Object value) async {
@@ -352,7 +326,6 @@ class _OrderScreenState extends State<OrderScreen> {
           _menu = items;
           _demoMenu = false;
           _hostOnline = true;
-          _syncFavs();
         });
       }
     } catch (error) {
@@ -362,29 +335,11 @@ class _OrderScreenState extends State<OrderScreen> {
         _menu = kSampleMenu;
         _demoMenu = true;
         _hostOnline = false;
-        _syncFavs();
       });
       _snack('Host unavailable — using demo menu');
     } finally {
       if (mounted) setState(() => _loadingMenu = false);
     }
-  }
-
-  /// Drop favourites that are not on the current menu.
-  void _syncFavs() {
-    final names = _menu.map((item) => item.name).toSet();
-    _favs = _favs.where(names.contains).toList();
-  }
-
-  void _toggleFav(String name) {
-    setState(() {
-      if (_favs.contains(name)) {
-        _favs.remove(name);
-      } else {
-        _favs.add(name);
-      }
-    });
-    _persist('waiter_favs', _favs);
   }
 
   Future<void> _checkHost() async {
@@ -541,6 +496,9 @@ class _OrderScreenState extends State<OrderScreen> {
   /// Adds an item. Drinks ask for their levels, an item with add-ons asks for
   /// those, and every one of them offers a quantity and a note.
   void _addItem(MenuItem item) {
+    // Drop the table keyboard first: closing an add dialog would otherwise hand
+    // focus back to the field and the keyboard would keep popping up.
+    FocusScope.of(context).unfocus();
     if (!item.available) {
       _snack('${item.name} is sold out');
       return;
@@ -573,11 +531,11 @@ class _OrderScreenState extends State<OrderScreen> {
     _askBundle(item, addOns).then((result) {
       if (!mounted || result == null) return;
       setState(() {
-        // The note belongs to the item, not to its add-ons.
-        _addItemWithNote(item, result.note,
-            merge: false, qty: result.parentQty);
+        // The note belongs to the item, not to its add-ons, and the add-ons
+        // hang off the item's line so they go when it goes.
+        final parent = _appendLine(item, result.note, qty: result.parentQty);
         for (final entry in result.addOnQty.entries) {
-          _addItemWithNote(entry.key, '', merge: false, qty: entry.value);
+          _appendLine(entry.key, '', qty: entry.value, parentId: parent.id);
         }
       });
     });
@@ -759,34 +717,111 @@ class _OrderScreenState extends State<OrderScreen> {
     ).whenComplete(note.dispose);
   }
 
+  /// Adds a line to the order and returns it. An add-on carries the id of the
+  /// item it was ordered with, so the list can nest it under its parent.
+  OrderItem _appendLine(
+    MenuItem item,
+    String note, {
+    int qty = 1,
+    String? parentId,
+  }) {
+    final line = OrderItem(
+      name: item.name,
+      qty: qty,
+      price: item.price,
+      station: item.station,
+      note: note,
+      parentId: parentId,
+    );
+    _items.add(line);
+    return line;
+  }
+
   void _addItemWithNote(
     MenuItem item,
     String note, {
     bool merge = true,
     int qty = 1,
+    String? parentId,
   }) {
     setState(() {
-      final index = merge
-          ? _items.indexWhere((i) => i.name == item.name && i.note == note)
+      // Only a line of its own merges; a bundle keeps its own lines so each
+      // add-on stays with the item it was ordered with.
+      final index = (merge && parentId == null)
+          ? _items.indexWhere(
+              (i) =>
+                  i.parentId == null && i.name == item.name && i.note == note,
+            )
           : -1;
       if (index >= 0) {
+        final existing = _items[index];
         _items[index] = OrderItem(
-          id: _items[index].id,
-          name: item.name,
-          qty: _items[index].qty + qty,
-          price: item.price,
-          station: item.station,
-          note: note,
+          id: existing.id,
+          name: existing.name,
+          qty: existing.qty + qty,
+          price: existing.price,
+          station: existing.station,
+          note: existing.note,
+          parentId: existing.parentId,
         );
       } else {
-        _items.add(OrderItem(
-          name: item.name,
-          qty: qty,
-          price: item.price,
-          station: item.station,
-          note: note,
-        ));
+        _appendLine(item, note, qty: qty, parentId: parentId);
       }
+    });
+  }
+
+  /// Edits a line's note — every line, including an add-on, keeps its own.
+  Future<void> _editNote(OrderItem item) async {
+    FocusScope.of(context).unfocus();
+    final controller = TextEditingController(text: item.note);
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(item.name),
+        content: SizedBox(
+          width: 340,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 2,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Note',
+              hintText: 'e.g. no sambal, extra spicy',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (value) =>
+                Navigator.of(dialogContext).pop(value.trim()),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || saved == null) return;
+    setState(() {
+      final index = _items.indexWhere((i) => i.id == item.id);
+      if (index < 0) return;
+      final existing = _items[index];
+      _items[index] = OrderItem(
+        id: existing.id,
+        name: existing.name,
+        qty: existing.qty,
+        price: existing.price,
+        station: existing.station,
+        note: saved,
+        parentId: existing.parentId,
+      );
     });
   }
 
@@ -796,22 +831,26 @@ class _OrderScreenState extends State<OrderScreen> {
       if (index < 0) return;
       final next = _items[index].qty + delta;
       if (next <= 0) {
-        _items.removeAt(index);
+        // A bundle's add-ons go when their parent line goes.
+        _items.removeWhere((i) => i.id == item.id || i.parentId == item.id);
       } else {
+        final existing = _items[index];
         _items[index] = OrderItem(
-          id: _items[index].id,
-          name: _items[index].name,
+          id: existing.id,
+          name: existing.name,
           qty: next,
-          price: _items[index].price,
-          station: _items[index].station,
-          note: _items[index].note,
+          price: existing.price,
+          station: existing.station,
+          note: existing.note,
+          parentId: existing.parentId,
         );
       }
     });
   }
 
   void _removeItem(OrderItem item) {
-    setState(() => _items.removeWhere((i) => i.id == item.id));
+    setState(() =>
+        _items.removeWhere((i) => i.id == item.id || i.parentId == item.id));
   }
 
   void _clearOrder() {
@@ -1145,8 +1184,7 @@ class _OrderScreenState extends State<OrderScreen> {
       children: [
         _searchField(),
         if (!searching) ...[
-          if (_favs.isNotEmpty) _quickPicks(),
-          _groupPicker(groups),
+        _groupPicker(groups),
         ],
         Row(
           children: [
@@ -1242,52 +1280,6 @@ class _OrderScreenState extends State<OrderScreen> {
                 )
               : null,
         ),
-      ),
-    );
-  }
-
-  Widget _quickPicks() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'QUICK PICKS',
-            style: TextStyle(
-              fontSize: 11,
-              letterSpacing: .8,
-              fontWeight: FontWeight.bold,
-              color: kMuted,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _favs.map((name) {
-                final match =
-                    _menu.where((item) => item.name == name).toList();
-                if (match.isEmpty) return const SizedBox.shrink();
-                final item = match.first;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: OutlinedButton.icon(
-                    onPressed: () => _addItem(item),
-                    icon: const Icon(Icons.star, size: 14, color: kStar),
-                    label: Text(item.name),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: kLine),
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1418,7 +1410,6 @@ class _OrderScreenState extends State<OrderScreen> {
     // A solid card in the item's group colour, so the groups read at a glance
     // — in a search too, where several groups are on screen.
     final card = _parseColor(item.color) ?? color ?? kSurface2;
-    final isFav = _favs.contains(item.name);
 
     return Material(
       color: card,
@@ -1478,24 +1469,6 @@ class _OrderScreenState extends State<OrderScreen> {
                     ),
                   ],
                 ),
-                Positioned(
-                  top: -6,
-                  right: -6,
-                  child: IconButton(
-                    iconSize: 18,
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 32, minHeight: 32),
-                    tooltip: isFav
-                        ? 'Remove from quick picks'
-                        : 'Add to quick picks',
-                    icon: Icon(
-                      isFav ? Icons.star : Icons.star_border,
-                      color: isFav ? kStar : Colors.white70,
-                    ),
-                    onPressed: () => _toggleFav(item.name),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1549,6 +1522,9 @@ class _OrderScreenState extends State<OrderScreen> {
           TextField(
             controller: _table,
             keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            // Done drops the keyboard, so it does not cover the menu.
+            onSubmitted: (_) => FocusScope.of(context).unfocus(),
             decoration: const InputDecoration(
               labelText: 'Table',
               border: OutlineInputBorder(),
@@ -1567,7 +1543,7 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
           )
         else
-          ..._items.map(_orderLine),
+          ..._cartRows(),
         const SizedBox(height: 8),
         TextField(
           controller: _note,
@@ -1598,35 +1574,115 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  Widget _orderLine(OrderItem item) {
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      title: Text(item.name),
-      // The station is an internal detail; only the note (e.g. drink options)
-      // is worth showing under an order line.
-      subtitle: item.note.isEmpty
-          ? null
-          : Text(item.note,
-              style: const TextStyle(fontSize: 11, color: kMuted)),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline),
-            onPressed: () => _changeQty(item, -1),
+  /// The order list, each add-on drawn under the item it was ordered with.
+  List<Widget> _cartRows() {
+    final rows = <Widget>[];
+    final drawn = <String>{};
+    for (final item in _items) {
+      // An add-on is drawn with its parent below.
+      if (item.parentId != null || drawn.contains(item.id)) continue;
+      rows.add(_orderLine(item));
+      drawn.add(item.id);
+      for (final addOn in _items.where((other) => other.parentId == item.id)) {
+        rows.add(_orderLine(addOn, nested: true));
+        drawn.add(addOn.id);
+      }
+    }
+    // An add-on whose parent is no longer there still shows, flat.
+    for (final item in _items) {
+      if (drawn.contains(item.id)) continue;
+      rows.add(_orderLine(item, nested: item.parentId != null));
+    }
+    return rows;
+  }
+
+  Widget _orderLine(OrderItem item, {bool nested = false}) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.only(left: nested ? 22 : 0),
+      child: ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        leading: nested
+            ? const Icon(
+                Icons.subdirectory_arrow_right,
+                size: 16,
+                color: kMuted,
+              )
+            : null,
+        title: Text(
+          item.name,
+          style: nested ? const TextStyle(fontSize: 13) : null,
+        ),
+        // Every line keeps its own note, drawn as a button so it is obvious the
+        // note can be tapped and edited.
+        subtitle: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: InkWell(
+              onTap: () => _editNote(item),
+              borderRadius: BorderRadius.circular(7),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(7),
+                  color: item.note.isEmpty
+                      ? theme.colorScheme.primary.withOpacity(0.10)
+                      : kWarnSoft,
+                  border: Border.all(
+                    color: item.note.isEmpty ? kLine : kWarnLine,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      item.note.isEmpty
+                          ? Icons.add_comment_outlined
+                          : Icons.edit_note,
+                      size: 13,
+                      color: item.note.isEmpty ? kMuted : kStar,
+                    ),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        item.note.isEmpty ? 'Add note' : item.note,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: item.note.isEmpty ? kMuted : kStar,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          Text('${item.qty}',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: () => _changeQty(item, 1),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => _removeItem(item),
-          ),
-        ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: () => _changeQty(item, -1),
+            ),
+            Text('${item.qty}',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () => _changeQty(item, 1),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _removeItem(item),
+            ),
+          ],
+        ),
       ),
     );
   }

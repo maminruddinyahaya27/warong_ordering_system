@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
 import '../models/order.dart';
@@ -7,19 +5,6 @@ import '../models/product.dart';
 import '../services/app_settings.dart';
 import '../services/cashier_service.dart';
 import '../services/print_queue_db.dart';
-
-/// Items pinned to the counter's quick-pick row on first run (filtered to
-/// whatever the cached catalog actually contains).
-const List<String> kCounterDefaultFavs = [
-  'Teh O (Panas)',
-  'Teh O (Sejuk)',
-  'Roti Kosong',
-  'Nasi Lemak Biasa',
-  'Kopi O (Panas)',
-  'Milo (Panas)',
-  'Roti Telur',
-  'Mee Goreng Mamak',
-];
 
 class _CartLine {
   _CartLine(this.product, this.qty, [this.note = '', this.parentId])
@@ -79,7 +64,6 @@ class _CounterScreenState extends State<CounterScreen> {
   String _query = '';
   String _activeGroup = '';
   String _orderType = 'dine_in';
-  List<String> _favs = [];
   bool _loading = true;
   bool _busy = false;
 
@@ -106,33 +90,9 @@ class _CounterScreenState extends State<CounterScreen> {
   Future<void> _loadPrefs() async {
     final settings = await _db.getAllSettings();
     _activeGroup = settings['counter_group'] ?? '';
-    final raw = settings['counter_favs'];
-    if (raw == null || raw.isEmpty) {
-      _favs = kCounterDefaultFavs.toList();
-      return;
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      _favs = decoded is List
-          ? decoded.map((e) => e.toString()).toList()
-          : kCounterDefaultFavs.toList();
-    } catch (_) {
-      _favs = kCounterDefaultFavs.toList();
-    }
   }
 
   Future<void> _persist(String key, String value) => _db.setSetting(key, value);
-
-  void _toggleFav(String name) {
-    setState(() {
-      if (_favs.contains(name)) {
-        _favs.remove(name);
-      } else {
-        _favs.add(name);
-      }
-    });
-    _persist('counter_favs', jsonEncode(_favs));
-  }
 
   // ------------------------------------------------------------------ data
 
@@ -143,8 +103,6 @@ class _CounterScreenState extends State<CounterScreen> {
     setState(() {
       _products = products;
       _loading = false;
-      final names = products.map((p) => p.name).toSet();
-      _favs = _favs.where(names.contains).toList();
     });
   }
 
@@ -199,9 +157,6 @@ class _CounterScreenState extends State<CounterScreen> {
     }).toList();
   }
 
-  List<Product> _matches(String name) =>
-      _products.where((p) => p.name == name).toList();
-
   // ------------------------------------------------------------------ cart
 
   List<OrderItem> get _orderItems =>
@@ -224,6 +179,10 @@ class _CounterScreenState extends State<CounterScreen> {
   /// stays on its own cart lines, with the add-ons nested under their parent so
   /// the ticket keeps each add-on with the item it was ordered with.
   void _add(Product product) {
+    // Drop the table/server keyboard first: closing an add dialog would
+    // otherwise hand focus back to the field and the keyboard would keep
+    // popping up over the grid.
+    FocusScope.of(context).unfocus();
     if (!product.available) {
       _snack('${product.name} is sold out');
       return;
@@ -597,6 +556,7 @@ class _CounterScreenState extends State<CounterScreen> {
 
   /// Edits a line's note — every line, including an add-on, keeps its own.
   Future<void> _editNote(_CartLine line) async {
+    FocusScope.of(context).unfocus();
     final controller = TextEditingController(text: line.note);
     final result = await showDialog<String>(
       context: context,
@@ -806,6 +766,9 @@ class _CounterScreenState extends State<CounterScreen> {
                 child: TextField(
                   controller: _table,
                   keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  // Done drops the keyboard, so it does not cover the grid.
+                  onSubmitted: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     labelText: 'Table',
                     isDense: true,
@@ -853,35 +816,6 @@ class _CounterScreenState extends State<CounterScreen> {
             : null,
       ),
       onChanged: (value) => setState(() => _query = value),
-    );
-  }
-
-  Widget _buildQuickPicks() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
-      child: SizedBox(
-        height: 38,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          children: _favs.map((name) {
-            final match = _matches(name);
-            if (match.isEmpty) return const SizedBox.shrink();
-            final product = match.first;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: OutlinedButton.icon(
-                onPressed: () => _add(product),
-                icon:
-                    const Icon(Icons.star, size: 14, color: Color(0xFFFFD54F)),
-                label: Text(product.name),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
     );
   }
 
@@ -1088,7 +1022,6 @@ class _CounterScreenState extends State<CounterScreen> {
             itemCount: products.length,
             itemBuilder: (context, index) {
               final product = products[index];
-              final isFav = _favs.contains(product.name);
               // A solid card in the item's group colour, so the groups read at
               // a glance — in a search too, where several groups are on screen.
               final card = _parseColor(product.color) ??
@@ -1151,26 +1084,6 @@ class _CounterScreenState extends State<CounterScreen> {
                               ),
                             ],
                           ),
-                          Positioned(
-                            top: -6,
-                            right: -6,
-                            child: IconButton(
-                              iconSize: 18,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                  minWidth: 32, minHeight: 32),
-                              tooltip: isFav
-                                  ? 'Remove from quick picks'
-                                  : 'Add to quick picks',
-                              icon: Icon(
-                                isFav ? Icons.star : Icons.star_border,
-                                color: isFav
-                                    ? const Color(0xFFFFD54F)
-                                    : Colors.white70,
-                              ),
-                              onPressed: () => _toggleFav(product.name),
-                            ),
-                          ),
                         ],
                       ),
                     ),
@@ -1202,7 +1115,6 @@ class _CounterScreenState extends State<CounterScreen> {
             ],
           ),
         ),
-        if (_favs.isNotEmpty) _buildQuickPicks(),
         _buildGroupPicker(),
         Expanded(child: _buildProductGrid()),
       ],
