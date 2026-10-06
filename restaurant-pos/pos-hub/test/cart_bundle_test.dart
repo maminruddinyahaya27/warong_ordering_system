@@ -139,4 +139,25 @@ void main() {
         reason: 'the curry goes with the roti it was ordered with');
     expect(find.text('No items'), findsOneWidget);
   });
+
+  testWidgets('the group dropdown lists the groups and switches the grid',
+      (tester) async {
+    await openCounter(tester);
+
+    // Opens without the ruled entries overflowing their row.
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Roti Canai'), findsWidgets);
+    expect(find.text('Lauk-pauk'), findsWidgets);
+
+    // Picking a group swaps the grid to that group's items.
+    await tester.tap(find.text('Lauk-pauk').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull, reason: 'no layout overflow');
+    expect(find.text('Kari Kambing'), findsWidgets);
+  });
 }

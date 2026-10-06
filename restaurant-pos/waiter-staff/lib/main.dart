@@ -412,10 +412,10 @@ class _OrderScreenState extends State<OrderScreen> {
   /// A hot drink — water, tea, coffee — is served Normal (hot) or Warm.
   static const List<String> _tempLevels = ['Normal', 'Warm'];
 
-  /// Asks for the levels the item wants (temperature, sugar and/or ice).
-  /// Returns the note to print — e.g. "Warm, Less sugar" — or null if
+  /// Asks for the levels the item wants (temperature, sugar and/or ice), a
+  /// quantity and a note — e.g. "Warm, Less sugar, no straw". Null if
   /// cancelled.
-  Future<String?> _askDrinkOptions(
+  Future<({int qty, String note})?> _askDrinkOptions(
     String itemName,
     bool askSugar,
     bool askIce,
@@ -425,7 +425,18 @@ class _OrderScreenState extends State<OrderScreen> {
     var temp = _tempLevels.first;
     var sugar = _sugarLevels.first;
     var ice = _iceLevels.first;
-    return showDialog<String>(
+    var qty = 1;
+    final note = TextEditingController();
+
+    String combine() => [
+          // Normal is the default, so only Warm is worth printing.
+          if (askTemp && temp != _tempLevels.first) temp,
+          if (askSugar) sugar,
+          if (askIce) ice,
+          note.text.trim(),
+        ].where((part) => part.isNotEmpty).join(', ');
+
+    return showDialog<({int qty, String note})>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -436,6 +447,12 @@ class _OrderScreenState extends State<OrderScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _stepperRow(
+                  'Quantity',
+                  qty,
+                  (value) => setDialogState(() => qty = value),
+                ),
+                const Divider(),
                 if (askTemp) ...[
                   const Text('Temperature',
                       style: TextStyle(fontSize: 12, color: kMuted)),
@@ -489,6 +506,17 @@ class _OrderScreenState extends State<OrderScreen> {
                         .toList(),
                   ),
                 ],
+                const SizedBox(height: 10),
+                TextField(
+                  controller: note,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (optional)',
+                    hintText: 'e.g. less sweet, no straw',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
               ],
             ),
           ),
@@ -498,39 +526,32 @@ class _OrderScreenState extends State<OrderScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(
-                [
-                  // Normal is the default, so only Warm is worth printing.
-                  if (askTemp && temp != _tempLevels.first) temp,
-                  if (askSugar) sugar,
-                  if (askIce) ice,
-                ].join(', '),
-              ),
+              onPressed: qty <= 0
+                  ? null
+                  : () => Navigator.of(dialogContext)
+                      .pop((qty: qty, note: combine())),
               child: const Text('Add'),
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(note.dispose);
   }
 
-  /// Adds an item. Drinks ask for their levels; items that have add-ons ask for
-  /// a quantity first and then the add-ons, and the bundle stays on its own
-  /// line so each add-on prints under the item it came with.
+  /// Adds an item. Drinks ask for their levels, an item with add-ons asks for
+  /// those, and every one of them offers a quantity and a note.
   void _addItem(MenuItem item) {
     if (!item.available) {
       _snack('${item.name} is sold out');
       return;
     }
     if (item.isDrink) {
-      // Hot drinks (and items with no level to ask) skip the dialog.
-      if (!item.askSugar && !item.askIce) {
-        _addItemWithNote(item, '');
-        return;
-      }
-      _askDrinkOptions(item.name, item.askSugar, item.askIce).then((note) {
-        if (!mounted || note == null) return;
-        _addItemWithNote(item, note);
+      // Every drink asks something: sugar and/or ice when the item is set up
+      // for it, and Normal/Warm when it is served hot (nothing iced). A drink
+      // that asks for nothing at all would never open this dialog.
+      _askDrinkOptions(item.name, item.askSugar, item.askIce).then((result) {
+        if (!mounted || result == null) return;
+        _addItemWithNote(item, result.note, qty: result.qty);
       });
       return;
     }
@@ -542,14 +563,19 @@ class _OrderScreenState extends State<OrderScreen> {
         _snack('${item.name} needs an add-on, but none are configured');
         return;
       }
-      _addItemWithNote(item, '');
+      _askItem(item).then((result) {
+        if (!mounted || result == null) return;
+        _addItemWithNote(item, result.note, qty: result.qty);
+      });
       return;
     }
 
     _askBundle(item, addOns).then((result) {
       if (!mounted || result == null) return;
       setState(() {
-        _addItemWithNote(item, '', merge: false, qty: result.parentQty);
+        // The note belongs to the item, not to its add-ons.
+        _addItemWithNote(item, result.note,
+            merge: false, qty: result.parentQty);
         for (final entry in result.addOnQty.entries) {
           _addItemWithNote(entry.key, '', merge: false, qty: entry.value);
         }
@@ -566,38 +592,40 @@ class _OrderScreenState extends State<OrderScreen> {
           item.addOnFor.split('|').contains(parent.category))
       .toList();
 
-  /// Quantity of the item, then a quantity for each add-on. Null if cancelled.
-  Future<({int parentQty, Map<MenuItem, int> addOnQty})?> _askBundle(
+  /// The − quantity + row the add dialogs use.
+  Widget _stepperRow(String label, int value, ValueChanged<int> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: value <= 0 ? null : () => onChanged(value - 1),
+          ),
+          Text('$value', style: const TextStyle(fontWeight: FontWeight.bold)),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => onChanged(value + 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Quantity, a note, then a quantity for each add-on. Null if cancelled.
+  Future<({int parentQty, Map<MenuItem, int> addOnQty, String note})?>
+      _askBundle(
     MenuItem parent,
     List<MenuItem> addOns,
   ) {
     var parentQty = 1;
     final chosen = <MenuItem, int>{};
-    return showDialog<({int parentQty, Map<MenuItem, int> addOnQty})>(
+    final note = TextEditingController();
+    return showDialog<({int parentQty, Map<MenuItem, int> addOnQty, String note})>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          Widget stepper(String label, int value, ValueChanged<int> onChanged) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: value <= 0 ? null : () => onChanged(value - 1),
-                  ),
-                  Text('$value',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: () => onChanged(value + 1),
-                  ),
-                ],
-              ),
-            );
-          }
-
           return AlertDialog(
             title: Text(parent.name),
             content: SizedBox(
@@ -606,7 +634,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  stepper(
+                  _stepperRow(
                     'Quantity',
                     parentQty,
                     (value) => setDialogState(() => parentQty = value),
@@ -626,7 +654,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       shrinkWrap: true,
                       children: addOns
                           .map(
-                            (option) => stepper(
+                            (option) => _stepperRow(
                               option.name,
                               chosen[option] ?? 0,
                               (value) => setDialogState(() {
@@ -639,6 +667,17 @@ class _OrderScreenState extends State<OrderScreen> {
                             ),
                           )
                           .toList(),
+                    ),
+                  ),
+                  const Divider(),
+                  TextField(
+                    controller: note,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: 'Note (optional)',
+                      hintText: 'e.g. no sambal, extra spicy',
+                      isDense: true,
+                      border: OutlineInputBorder(),
                     ),
                   ),
                 ],
@@ -654,15 +693,70 @@ class _OrderScreenState extends State<OrderScreen> {
                         (parent.requireAddOn &&
                             chosen.values.every((qty) => qty <= 0))
                     ? null
-                    : () => Navigator.of(dialogContext)
-                        .pop((parentQty: parentQty, addOnQty: Map.of(chosen))),
+                    : () => Navigator.of(dialogContext).pop((
+                          parentQty: parentQty,
+                          addOnQty: Map.of(chosen),
+                          note: note.text.trim(),
+                        )),
                 child: const Text('Add'),
               ),
             ],
           );
         },
       ),
-    );
+    ).whenComplete(note.dispose);
+  }
+
+  /// Quantity and note for an item with no add-ons. Null if cancelled.
+  Future<({int qty, String note})?> _askItem(MenuItem item) {
+    var qty = 1;
+    final note = TextEditingController();
+    return showDialog<({int qty, String note})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(item.name),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _stepperRow(
+                  'Quantity',
+                  qty,
+                  (value) => setDialogState(() => qty = value),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: note,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (optional)',
+                    hintText: 'e.g. no sambal, extra spicy',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: qty <= 0
+                  ? null
+                  : () => Navigator.of(dialogContext)
+                      .pop((qty: qty, note: note.text.trim())),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(note.dispose);
   }
 
   void _addItemWithNote(
@@ -1199,6 +1293,8 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   /// The menu group picker — the same control as the POS Hub's order page.
+  /// Ruled top and bottom so it reads as a control, and each entry of the
+  /// opened list is ruled so the groups read as separate choices.
   Widget _groupPicker(List<_MenuGroup> groups) {
     if (groups.isEmpty) return const SizedBox.shrink();
     final activeName = groups.any((g) => g.name == _activeGroup)
@@ -1207,77 +1303,109 @@ class _OrderScreenState extends State<OrderScreen> {
     final active = groups.firstWhere((g) => g.name == activeName);
     final color = active.color ?? const Color(0xFF2E7D32);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: DropdownButtonFormField<String>(
-        value: activeName,
-        isExpanded: true,
-        icon: const Icon(Icons.expand_more),
-        borderRadius: BorderRadius.circular(12),
-        dropdownColor: kSurface,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
-        decoration: InputDecoration(
-          labelText: 'Menu group',
-          labelStyle: const TextStyle(color: kMuted),
-          prefixIcon: Icon(Icons.category_outlined, color: color),
-          isDense: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: color.withOpacity(0.6)),
+    /// One entry: the colour dot, the group and how many items it holds.
+    /// [ruled] draws the divider under the entry, for the opened list.
+    Widget entry(_MenuGroup group, {required bool ruled, required bool bold}) {
+      final content = Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: group.color ?? kMuted,
+              shape: BoxShape.circle,
+            ),
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: color.withOpacity(0.6)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: color, width: 2),
-          ),
-        ),
-        items: [
-          for (final group in groups)
-            DropdownMenuItem(
-              value: group.name,
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: group.color ?? kMuted,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      group.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: group.name == activeName
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${group.items.length}',
-                    style: const TextStyle(fontSize: 12, color: kMuted),
-                  ),
-                ],
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              group.name,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
               ),
             ),
+          ),
+          Text(
+            '${group.items.length}',
+            style: const TextStyle(fontSize: 12, color: kMuted),
+          ),
         ],
-        onChanged: (name) {
-          if (name == null) return;
-          setState(() {
-            _activeGroup = name;
-            _query = '';
-            _search.clear();
-          });
-          _persist('waiter_group', name);
-        },
-      ),
+      );
+      if (!ruled) return content;
+      // A bottom border, rather than a Divider, so the entry keeps its height.
+      return Container(
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: kLine)),
+        ),
+        child: content,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
+          child: DropdownButtonFormField<String>(
+            value: activeName,
+            isExpanded: true,
+            icon: const Icon(Icons.expand_more),
+            borderRadius: BorderRadius.circular(12),
+            dropdownColor: kSurface,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              labelText: 'Menu group',
+              labelStyle: const TextStyle(color: kMuted),
+              prefixIcon: Icon(Icons.category_outlined, color: color),
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color.withOpacity(0.6)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color.withOpacity(0.6)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color, width: 2),
+              ),
+            ),
+            // The closed field shows the bare entry; the opened list rules
+            // each one so the groups read as separate choices.
+            selectedItemBuilder: (context) => [
+              for (final group in groups)
+                SizedBox(
+                  width: double.infinity,
+                  child: entry(group, ruled: false, bold: false),
+                ),
+            ],
+            items: [
+              for (var i = 0; i < groups.length; i++)
+                DropdownMenuItem(
+                  value: groups[i].name,
+                  child: entry(
+                    groups[i],
+                    ruled: i < groups.length - 1,
+                    bold: groups[i].name == activeName,
+                  ),
+                ),
+            ],
+            onChanged: (name) {
+              if (name == null) return;
+              setState(() {
+                _activeGroup = name;
+                _query = '';
+                _search.clear();
+              });
+              _persist('waiter_group', name);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+      ],
     );
   }
 

@@ -229,7 +229,10 @@ class _CounterScreenState extends State<CounterScreen> {
       return;
     }
 
-    if (product.isDrink && (product.askSugar || product.askIce)) {
+    if (product.isDrink) {
+      // Every drink asks something: sugar and/or ice when the item is set up
+      // for it, and Normal/Warm when it is served hot (nothing iced). A drink
+      // that asks for nothing at all would never open this dialog.
       _askDrinkOptions(product)
           .then((result) {
         if (!mounted || result == null) return;
@@ -905,79 +908,114 @@ class _CounterScreenState extends State<CounterScreen> {
   }
 
   /// The menu group picker — the group decides which dishes the grid shows.
+  /// Ruled top and bottom so it reads as a control, and each entry of the
+  /// opened list is ruled so the groups read as separate choices.
   Widget _buildGroupPicker() {
     final groups = _groups;
     if (groups.isEmpty) return const SizedBox.shrink();
     final active = _activeName;
     final color = _activeColor ?? Theme.of(context).colorScheme.primary;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      child: DropdownButtonFormField<String>(
-        value: active,
-        isExpanded: true,
-        icon: const Icon(Icons.expand_more),
-        borderRadius: BorderRadius.circular(12),
-        decoration: InputDecoration(
-          labelText: 'Menu group',
-          prefixIcon: Icon(Icons.category_outlined, color: color),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: color.withOpacity(0.6)),
+    /// One entry: the colour dot, the group and how many items it holds.
+    /// [ruled] draws the divider under the entry, for the opened list.
+    Widget entry(String name, {required bool ruled, required bool bold}) {
+      final content = Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: _colorFor(name) ?? Colors.grey,
+              shape: BoxShape.circle,
+            ),
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: color.withOpacity(0.6)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: color, width: 2),
-          ),
-          isDense: true,
-        ),
-        items: [
-          for (final name in groups)
-            DropdownMenuItem(
-              value: name,
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: _colorFor(name) ?? Colors.grey,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      name,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight:
-                            name == active ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${_countFor(name)}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ],
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              name,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
               ),
             ),
+          ),
+          Text(
+            '${_countFor(name)}',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
         ],
-        onChanged: (name) {
-          if (name == null) return;
-          setState(() {
-            _activeGroup = name;
-            _query = '';
-            _search.clear();
-          });
-          _persist('counter_group', name);
-        },
-      ),
+      );
+      if (!ruled) return content;
+      // A bottom border, rather than a Divider, so the entry keeps its height.
+      return Container(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: Colors.grey.shade700)),
+        ),
+        child: content,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: DropdownButtonFormField<String>(
+            value: active,
+            isExpanded: true,
+            icon: const Icon(Icons.expand_more),
+            borderRadius: BorderRadius.circular(12),
+            decoration: InputDecoration(
+              labelText: 'Menu group',
+              prefixIcon: Icon(Icons.category_outlined, color: color),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color.withOpacity(0.6)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color.withOpacity(0.6)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color, width: 2),
+              ),
+              isDense: true,
+            ),
+            // The closed field shows the bare entry; the opened list rules
+            // each one so the groups read as separate choices.
+            selectedItemBuilder: (context) => [
+              for (final name in groups)
+                SizedBox(
+                  width: double.infinity,
+                  child: entry(name, ruled: false, bold: false),
+                ),
+            ],
+            items: [
+              for (var i = 0; i < groups.length; i++)
+                DropdownMenuItem(
+                  value: groups[i],
+                  child: entry(
+                    groups[i],
+                    ruled: i < groups.length - 1,
+                    bold: groups[i] == active,
+                  ),
+                ),
+            ],
+            onChanged: (name) {
+              if (name == null) return;
+              setState(() {
+                _activeGroup = name;
+                _query = '';
+                _search.clear();
+              });
+              _persist('counter_group', name);
+            },
+          ),
+        ),
+        const Divider(height: 1),
+      ],
     );
   }
 

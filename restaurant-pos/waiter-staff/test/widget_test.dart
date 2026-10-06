@@ -124,7 +124,10 @@ void main() {
 
     // Tapping a tile adds it to the cart, reflected in the order summary.
     await tester.tap(find.text('Teh O (Panas)').first);
-    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 200));
+    // Every item offers its quantity and a note first.
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pump(const Duration(milliseconds: 200));
     expect(find.textContaining('item'), findsWidgets);
 
     // The dropdown switches the group, like the POS Hub's order page.
