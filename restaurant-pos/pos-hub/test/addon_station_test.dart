@@ -3,13 +3,13 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:restaurant_pos_hub/models/order.dart';
 import 'package:restaurant_pos_hub/models/product.dart';
-import 'package:restaurant_pos_hub/services/app_settings.dart';
 import 'package:restaurant_pos_hub/services/cashier_service.dart';
 import 'package:restaurant_pos_hub/services/print_queue_db.dart';
 
-/// Add-on groups: a Lauk-pauk curry ordered with a Roti Canai must print on the
-/// roti canai (Griddle) ticket, so the stall gets the roti and its curry
-/// together. On its own it keeps its own station.
+/// An add-on must print on the station of the item it was ordered with, which
+/// is the most recent item of a group it is an add-on for — not the first such
+/// group on the bill, which used to send a nasi lemak's curry to the roti
+/// station whenever the table also had a roti canai.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -21,134 +21,140 @@ void main() {
 
   setUp(() async {
     final db = PrintQueueDb.instance;
-    await db.clear();
-    await SettingsStore.instance.load();
+    final raw = await db.database;
+    await raw.delete('order_items');
+    await raw.delete('orders');
+    await raw.delete('jobs');
+
     await db.replaceProducts(const [
       Product(
         sku: 'rc_01',
-        name: 'Roti Kosong',
-        price: 1.5,
-        station: 'Griddle',
+        name: 'Roti Canai',
+        price: 2.5,
+        station: 'roti_capati',
         category: 'Roti Canai',
         available: true,
       ),
       Product(
-        sku: 'lp_01',
-        name: 'Kari Kambing',
-        price: 8,
-        station: 'Kitchen',
-        category: 'Lauk-pauk',
-        available: true,
-        addOnFor: 'Roti Canai',
-      ),
-      Product(
         sku: 'nl_01',
-        name: 'Nasi Lemak',
-        price: 5,
-        station: 'Kitchen',
+        name: 'Nasi Lemak Biasa',
+        price: 4,
+        station: 'nasi_lemak_lontong',
         category: 'Nasi Lemak',
         available: true,
       ),
+      Product(
+        sku: 'lp_06',
+        name: 'Rendang Kerang',
+        price: 5,
+        station: 'nasi_lemak_lontong',
+        category: 'Lauk-pauk',
+        available: true,
+        // Roti Canai comes first, exactly as the portal stores it.
+        addOnFor: 'Roti Canai|Roti Jala|Lempeng|Capati|Nasi Lemak|Lontong',
+      ),
     ]);
   });
 
-  OrderItem line(String sku, String name, String station) => OrderItem(
+  OrderItem line(String sku, String name, double price) => OrderItem(
         sku: sku,
         name: name,
         qty: 1,
-        unitPrice: 1,
-        lineTotal: 1,
-        station: station,
+        unitPrice: price,
+        lineTotal: price,
+        station: sku == 'rc_01' ? 'roti_capati' : 'nasi_lemak_lontong',
       );
 
-  test('a curry ordered with roti canai prints on the Griddle ticket', () async {
-    final cashier = CashierService.instance;
-
-    await cashier.createOrder(
-      channel: 'counter',
-      tableNo: '1',
-      items: [
-        line('rc_01', 'Roti Kosong', 'Griddle'),
-        line('lp_01', 'Kari Kambing', 'Kitchen'),
-      ],
+  /// The ticket text queued for [station], or null when nothing was queued.
+  Future<String?> ticketFor(String station) async {
+    final raw = await PrintQueueDb.instance.database;
+    final rows = await raw.query(
+      'jobs',
+      where: 'station = ?',
+      whereArgs: [station],
+      orderBy: 'id DESC',
+      limit: 1,
     );
+    if (rows.isEmpty) return null;
+    return rows.first['payload'] as String;
+  }
 
-    final jobs = await PrintQueueDb.instance.getAllJobs();
-    final stations = jobs.map((job) => job.station).toList();
-
-    expect(stations, contains('Griddle'));
-    expect(stations, isNot(contains('Kitchen')),
-        reason: 'the curry follows the roti station');
-
-    final gridde = jobs.firstWhere((job) => job.station == 'Griddle');
-    expect(gridde.payload, contains('Roti Kosong'));
-    expect(gridde.payload, contains('Kari Kambing'));
-  });
-
-  test('a curry on its own stays on the Kitchen ticket', () async {
-    final cashier = CashierService.instance;
-
-    await cashier.createOrder(
-      channel: 'counter',
-      tableNo: '2',
-      items: [
-        line('lp_01', 'Kari Kambing', 'Kitchen'),
-        line('nl_01', 'Nasi Lemak', 'Kitchen'),
-      ],
-    );
-
-    final jobs = await PrintQueueDb.instance.getAllJobs();
-    expect(jobs, hasLength(1));
-    expect(jobs.first.station, 'Kitchen');
-    expect(jobs.first.payload, contains('Kari Kambing'));
-  });
-
-  test('adding a curry later joins the open bill on the roti station',
+  test('a curry ordered with the nasi lemak prints on the nasi lemak ticket',
       () async {
-    final cashier = CashierService.instance;
+    await CashierService.instance.createOrder(
+      channel: 'counter',
+      tableNo: '7',
+      items: [
+        line('rc_01', 'Roti Canai', 2.5),
+        line('nl_01', 'Nasi Lemak Biasa', 4),
+        line('lp_06', 'Rendang Kerang', 5),
+      ],
+    );
 
-    final created = await cashier.createOrder(
+    final roti = await ticketFor('roti_capati');
+    expect(roti, isNotNull, reason: 'the roti canai still needs its ticket');
+    expect(roti, contains('Roti Canai'));
+    expect(roti, isNot(contains('Rendang Kerang')),
+        reason: 'the curry belongs to the nasi lemak, not the roti');
+
+    final nasiLemak = await ticketFor('nasi_lemak_lontong');
+    expect(nasiLemak, isNotNull);
+    expect(nasiLemak, contains('Nasi Lemak Biasa'));
+    expect(nasiLemak, contains('    - Rendang Kerang'),
+        reason: 'the curry prints nested under the nasi lemak');
+  });
+
+  test('an add-on with no parent on the bill keeps its own station', () async {
+    await CashierService.instance.createOrder(
       channel: 'counter',
       tableNo: '3',
-      items: [line('rc_01', 'Roti Kosong', 'Griddle')],
+      items: [line('lp_06', 'Rendang Kerang', 5)],
     );
 
-    await cashier.addOrderItems(created.id!, [
-      line('lp_01', 'Kari Kambing', 'Kitchen'),
-    ]);
-
-    final jobs = await PrintQueueDb.instance.getAllJobs();
-    final curryJobs =
-        jobs.where((job) => job.payload.contains('Kari Kambing')).toList();
-
-    expect(curryJobs, hasLength(1));
-    expect(curryJobs.first.station, 'Griddle',
-        reason: 'overrides use the whole order, not just the added lines');
+    final own = await ticketFor('nasi_lemak_lontong');
+    expect(own, isNotNull);
+    expect(own, contains('Rendang Kerang'));
+    expect(await ticketFor('roti_capati'), isNull);
   });
 
-  test('a curry added later through the counter merge prints on Griddle',
-      () async {
-    final cashier = CashierService.instance;
-
-    final first = await cashier.createOrAppendOrder(
+  test('the preview shows the same tickets that would print', () async {
+    final order = await CashierService.instance.createOrder(
       channel: 'counter',
-      tableNo: '4',
-      idempotencyKey: 'round-1',
-      items: [line('rc_01', 'Roti Kosong', 'Griddle')],
+      tableNo: '7',
+      items: [
+        line('rc_01', 'Roti Canai', 2.5),
+        line('nl_01', 'Nasi Lemak Biasa', 4),
+        line('lp_06', 'Rendang Kerang', 5),
+      ],
     );
-    expect(first.merged, isFalse);
 
-    final second = await cashier.createOrAppendOrder(
+    final preview = await CashierService.instance.ticketPreviews(order);
+    expect(preview.keys.toSet(), {'roti_capati', 'nasi_lemak_lontong'});
+    expect(preview['roti_capati'], await ticketFor('roti_capati'));
+    expect(preview['nasi_lemak_lontong'],
+        await ticketFor('nasi_lemak_lontong'));
+  });
+
+  test('one station can be printed again on its own', () async {
+    final db = PrintQueueDb.instance;
+    final order = await CashierService.instance.createOrder(
       channel: 'counter',
-      tableNo: '4',
-      idempotencyKey: 'round-2',
-      items: [line('lp_01', 'Kari Kambing', 'Kitchen')],
+      tableNo: '7',
+      items: [
+        line('rc_01', 'Roti Canai', 2.5),
+        line('nl_01', 'Nasi Lemak Biasa', 4),
+        line('lp_06', 'Rendang Kerang', 5),
+      ],
     );
-    expect(second.merged, isTrue, reason: 'joins the open bill');
 
-    final jobs = await PrintQueueDb.instance.getAllJobs();
-    final curryJob =
-        jobs.firstWhere((job) => job.payload.contains('Kari Kambing'));
-    expect(curryJob.station, 'Griddle');
+    // Forget what creating the order queued, then print one station only.
+    final raw = await db.database;
+    await raw.delete('jobs');
+
+    await CashierService.instance.sendStationTicket(order, 'roti_capati');
+
+    expect(await ticketFor('roti_capati'), contains('Roti Canai'));
+    expect(await ticketFor('nasi_lemak_lontong'), isNull,
+        reason: 'the other stations are not printed by a single-station print');
   });
 }

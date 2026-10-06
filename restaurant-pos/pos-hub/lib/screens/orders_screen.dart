@@ -11,6 +11,7 @@ import '../widgets/charge_mode_dialog.dart';
 import '../widgets/partial_picker.dart';
 import '../widgets/receipt_prompt.dart';
 import '../widgets/settle_order.dart';
+import '../widgets/ticket_preview.dart';
 
 /// Open orders list — the counter's main screen. Tapping a row opens the order
 /// for amending; Close settles it. The search box filters the bills by table.
@@ -202,6 +203,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
     _snack('Kitchen tickets queued for ${order.orderNo}');
   }
 
+  /// Shows what each station's ticket will say, without printing anything —
+  /// and lets a single station's ticket be sent on its own.
+  Future<void> _previewTickets(Order order) async {
+    final tickets = await _cashier.ticketPreviews(order);
+    if (!mounted) return;
+    await showTicketPreview(
+      context,
+      orderNo: order.orderNo,
+      tickets: tickets,
+      onPrint: (station) => _cashier.sendStationTicket(order, station),
+    );
+  }
+
   Future<bool?> _confirm({
     required String title,
     required String message,
@@ -386,6 +400,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             label: const Text('Receipt'),
                           ),
                         OutlinedButton.icon(
+                          onPressed: () => _previewTickets(current),
+                          icon: const Icon(Icons.preview_outlined),
+                          label: const Text('Preview'),
+                        ),
+                        OutlinedButton.icon(
                           onPressed: () => _resendTickets(current),
                           icon: const Icon(Icons.print),
                           label: const Text('Tickets'),
@@ -534,58 +553,66 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
             )
           else
-            ..._visibleOrders.map((order) => Card(
-                  margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      // Identify the bill by its table, not the order number.
-                      child: Text(order.tableNo.isNotEmpty
-                          ? order.tableNo
-                          : 'TA'),
-                    ),
-                    title: Text(
-                      order.orderType == 'take_away'
-                          ? 'Take Away - ${order.orderNo}'
-                          : order.orderNo,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text([
-                      if (order.tableNo.isNotEmpty) 'Table ${order.tableNo}',
-                      if (order.serverName.isNotEmpty) order.serverName,
-                      order.channel,
-                      '${order.items.fold<int>(0, (sum, item) => sum + item.qty)} item(s)',
-                    ].join(' · ')),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '$_money${order.total.toStringAsFixed(2)}',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            if (order.paid > 0 && !order.isSettled)
-                              Text(
-                                'paid $_money${order.paid.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontSize: 11, color: Colors.orange),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: () => _pay(order),
-                          child: const Text('Close'),
-                        ),
-                      ],
-                    ),
-                    onTap: () => _openOrder(order),
-                  ),
-                )),
+            _buildTableGrid(_visibleOrders),
         ],
+      ),
+    );
+  }
+
+  /// One circle per open bill, showing its table number. Tapping opens the
+  /// bill, where the lines are amended and the bill is settled.
+  Widget _buildTableGrid(List<Order> orders) {
+    final columns =
+        (MediaQuery.of(context).size.width / 118).floor().clamp(3, 8);
+    return GridView.count(
+      crossAxisCount: columns,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      children: [for (final order in orders) _buildTableBubble(order)],
+    );
+  }
+
+  Widget _buildTableBubble(Order order) {
+    final takeAway = order.tableNo.trim().isEmpty;
+    final label = takeAway ? 'TA' : order.tableNo.trim().toUpperCase();
+    final partPaid = order.paid > 0 && !order.isSettled;
+    final color = partPaid
+        ? Colors.orange
+        : (takeAway
+            ? Colors.blueGrey
+            : Theme.of(context).colorScheme.primary);
+    final items = order.items.fold<int>(0, (sum, item) => sum + item.qty);
+
+    return Tooltip(
+      message: '${order.orderNo}\n$items item(s) · $_money'
+          '${order.total.toStringAsFixed(2)}',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => _openOrder(order),
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withOpacity(0.12),
+            border: Border.all(color: color, width: 3),
+          ),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(6),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              key: ValueKey('bill-${order.orderNo}'),
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

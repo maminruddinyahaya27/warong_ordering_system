@@ -47,10 +47,13 @@ void main() {
     }
   }
 
-  /// The table badges of the visible rows, in the order they are shown.
+  /// The table badges of the visible bills, in the order they are shown.
   List<String> badges(WidgetTester tester) => tester
-      .widgetList<CircleAvatar>(find.byType(CircleAvatar))
-      .map((avatar) => (avatar.child as Text).data!)
+      .widgetList<Text>(find.byWidgetPredicate((widget) =>
+          widget is Text &&
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith('bill-')))
+      .map((text) => text.data!)
       .toList();
 
   Future<void> openList(WidgetTester tester) async {

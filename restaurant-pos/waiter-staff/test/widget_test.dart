@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -98,7 +99,7 @@ void main() {
     expect(await OrderHistory.load(), isEmpty);
   });
 
-  testWidgets('v2 layout renders quick picks and category chips',
+  testWidgets('v2 layout renders quick picks and the group dropdown',
       (tester) async {
     // Skip the first-run dialogs; no host means the menu fetch fails and the
     // demo menu is used.
@@ -112,11 +113,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 120));
     }
 
-    // Search box, quick picks row and category chips are all present.
+    // Search box, quick picks row and the group dropdown are all present.
     expect(find.textContaining('Search all'), findsOneWidget);
     expect(find.text('QUICK PICKS'), findsOneWidget);
+    expect(find.text('Menu group'), findsOneWidget);
     expect(find.text('Minuman'), findsWidgets);
-    expect(find.text('Roti Canai'), findsWidgets);
 
     // The first group (portal order) is shown with its items.
     expect(find.text('Teh O (Panas)'), findsWidgets);
@@ -125,5 +126,12 @@ void main() {
     await tester.tap(find.text('Teh O (Panas)').first);
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.textContaining('item'), findsWidgets);
+
+    // The dropdown switches the group, like the POS Hub's order page.
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Roti Canai').last);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Roti Canai'), findsWidgets);
   });
 }

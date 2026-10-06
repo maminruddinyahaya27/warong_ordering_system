@@ -22,7 +22,8 @@ const List<String> kCounterDefaultFavs = [
 ];
 
 class _CartLine {
-  _CartLine(this.product, this.qty, [this.note = '']) : id = _nextId();
+  _CartLine(this.product, this.qty, [this.note = '', this.parentId])
+      : id = _nextId();
 
   static int _sequence = 0;
   static String _nextId() => 'L${DateTime.now().microsecondsSinceEpoch}_${_sequence++}';
@@ -33,9 +34,13 @@ class _CartLine {
   /// it) are never merged, so each roti keeps its own curry on the ticket.
   final String id;
 
+  /// The line this add-on was ordered with; null for a line of its own. The
+  /// cart shows an add-on nested under its parent.
+  final String? parentId;
+
   int qty;
 
-  /// Per-line note, e.g. the sweetness for a drink.
+  /// Per-line note, e.g. the sweetness for a drink or "no sambal".
   String note;
 
   OrderItem toOrderItem() => OrderItem(
@@ -211,25 +216,24 @@ class _CounterScreenState extends State<CounterScreen> {
   ];
   static const List<String> _iceLevels = ['Normal ice', 'Less ice', 'No ice'];
 
-  /// Adds an item. Drinks ask for their levels; items that have add-ons ask for
-  /// a quantity first and then the add-ons, and the whole bundle stays on its
-  /// own cart line so the ticket keep each add-on with its parent.
+  /// A hot drink — water, tea, coffee — is served Normal (hot) or Warm.
+  static const List<String> _tempLevels = ['Normal', 'Warm'];
+
+  /// Adds an item. Drinks ask for their levels; every other item asks for a
+  /// quantity and a note, and an item with add-ons asks for those too. A bundle
+  /// stays on its own cart lines, with the add-ons nested under their parent so
+  /// the ticket keeps each add-on with the item it was ordered with.
   void _add(Product product) {
     if (!product.available) {
       _snack('${product.name} is sold out');
       return;
     }
 
-    if (product.isDrink) {
-      // Hot drinks (and items with no level to ask) skip the dialog.
-      if (!product.askSugar && !product.askIce) {
-        _addWithNote(product, '');
-        return;
-      }
-      _askDrinkOptions(product.name, product.askSugar, product.askIce)
-          .then((note) {
-        if (!mounted || note == null) return;
-        _addWithNote(product, note);
+    if (product.isDrink && (product.askSugar || product.askIce)) {
+      _askDrinkOptions(product)
+          .then((result) {
+        if (!mounted || result == null) return;
+        _addLine(product, result.qty, result.note);
       });
       return;
     }
@@ -241,16 +245,20 @@ class _CounterScreenState extends State<CounterScreen> {
         _snack('${product.name} needs an add-on, but none are configured');
         return;
       }
-      _addWithNote(product, '');
+      _askItem(product).then((result) {
+        if (!mounted || result == null) return;
+        _addLine(product, result.qty, result.note);
+      });
       return;
     }
 
     _askBundle(product, addOns).then((result) {
       if (!mounted || result == null) return;
       setState(() {
-        _cart.add(_CartLine(product, result.parentQty, ''));
+        final parent = _CartLine(product, result.parentQty, result.note);
+        _cart.add(parent);
         for (final entry in result.addOnQty.entries) {
-          _cart.add(_CartLine(entry.key, entry.value, ''));
+          _cart.add(_CartLine(entry.key, entry.value, '', parent.id));
         }
       });
     });
@@ -265,39 +273,40 @@ class _CounterScreenState extends State<CounterScreen> {
           product.addOnFor.split('|').contains(parent.category))
       .toList();
 
-  /// Quantity of the item, then a quantity for each add-on. Returns null when
-  /// cancelled.
-  Future<({int parentQty, Map<Product, int> addOnQty})?> _askBundle(
+  /// The − quantity + row the add dialogs use.
+  Widget stepperRow(String label, int value, ValueChanged<int> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: value <= 0 ? null : () => onChanged(value - 1),
+          ),
+          Text('$value', style: const TextStyle(fontWeight: FontWeight.bold)),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => onChanged(value + 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Quantity and note for the item, then a quantity for each add-on. Returns
+  /// null when cancelled.
+  Future<({int parentQty, Map<Product, int> addOnQty, String note})?> _askBundle(
     Product parent,
     List<Product> addOns,
   ) {
     var parentQty = 1;
     final chosen = <Product, int>{};
-    return showDialog<({int parentQty, Map<Product, int> addOnQty})>(
+    final note = TextEditingController();
+    return showDialog<({int parentQty, Map<Product, int> addOnQty, String note})>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          Widget stepper(String label, int value, ValueChanged<int> onChanged) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: value <= 0 ? null : () => onChanged(value - 1),
-                  ),
-                  Text('$value',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: () => onChanged(value + 1),
-                  ),
-                ],
-              ),
-            );
-          }
-
           return AlertDialog(
             title: Text(parent.name),
             content: SizedBox(
@@ -306,7 +315,7 @@ class _CounterScreenState extends State<CounterScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  stepper(
+                  stepperRow(
                     'Quantity',
                     parentQty,
                     (value) => setDialogState(() => parentQty = value),
@@ -328,7 +337,7 @@ class _CounterScreenState extends State<CounterScreen> {
                       shrinkWrap: true,
                       children: addOns
                           .map(
-                            (option) => stepper(
+                            (option) => stepperRow(
                               '${option.name}  ${_settings.currency}${option.price.toStringAsFixed(2)}',
                               chosen[option] ?? 0,
                               (value) => setDialogState(() {
@@ -341,6 +350,17 @@ class _CounterScreenState extends State<CounterScreen> {
                             ),
                           )
                           .toList(),
+                    ),
+                  ),
+                  const Divider(),
+                  TextField(
+                    controller: note,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: 'Note (optional)',
+                      hintText: 'e.g. no sambal, extra spicy',
+                      isDense: true,
+                      border: OutlineInputBorder(),
                     ),
                   ),
                 ],
@@ -356,37 +376,131 @@ class _CounterScreenState extends State<CounterScreen> {
                         (parent.requireAddOn &&
                             chosen.values.every((qty) => qty <= 0))
                     ? null
-                    : () => Navigator.of(dialogContext)
-                        .pop((parentQty: parentQty, addOnQty: Map.of(chosen))),
+                    : () => Navigator.of(dialogContext).pop((
+                          parentQty: parentQty,
+                          addOnQty: Map.of(chosen),
+                          note: note.text.trim(),
+                        )),
                 child: const Text('Add'),
               ),
             ],
           );
         },
       ),
-    );
+    ).whenComplete(note.dispose);
   }
 
-  /// Asks for the levels the item wants (sugar and/or ice). Returns the note to
-  /// print — always set, e.g. "Normal sugar, Less ice" — or null if cancelled.
-  Future<String?> _askDrinkOptions(
-    String itemName,
-    bool askSugar,
-    bool askIce,
-  ) {
-    var sugar = _sugarLevels.first;
-    var ice = _iceLevels.first;
-    return showDialog<String>(
+  /// Quantity and note for an item with no add-ons. Returns null if cancelled.
+  Future<({int qty, String note})?> _askItem(Product product) {
+    var qty = 1;
+    final note = TextEditingController();
+    return showDialog<({int qty, String note})>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(itemName),
+          title: Text(product.name),
           content: SizedBox(
             width: 340,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                stepperRow(
+                  'Quantity',
+                  qty,
+                  (value) => setDialogState(() => qty = value),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: note,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (optional)',
+                    hintText: 'e.g. no sambal, extra spicy',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: qty <= 0
+                  ? null
+                  : () => Navigator.of(dialogContext)
+                      .pop((qty: qty, note: note.text.trim())),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(note.dispose);
+  }
+
+  /// Asks for the levels the item wants (temperature, sugar and/or ice), a
+  /// quantity and a note. The returned note combines them — e.g.
+  /// "Warm, Less sugar, no straw" — or null if cancelled.
+  Future<({int qty, String note})?> _askDrinkOptions(Product product) {
+    final askSugar = product.askSugar;
+    final askIce = product.askIce;
+    // Nothing iced is served hot, so it can be Normal or Warm.
+    final askTemp = !askIce;
+    var temp = _tempLevels.first;
+    var sugar = _sugarLevels.first;
+    var ice = _iceLevels.first;
+    var qty = 1;
+    final note = TextEditingController();
+
+    String combine() => [
+          // Normal is the default, so only Warm or above is worth printing.
+          if (askTemp && temp != _tempLevels.first) temp,
+          if (askSugar) sugar,
+          if (askIce) ice,
+          note.text.trim(),
+        ].where((part) => part.isNotEmpty).join(', ');
+
+    return showDialog<({int qty, String note})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(product.name),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                stepperRow(
+                  'Quantity',
+                  qty,
+                  (value) => setDialogState(() => qty = value),
+                ),
+                const Divider(),
+                if (askTemp) ...[
+                  const Text(
+                    'Temperature',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    children: _tempLevels
+                        .map(
+                          (level) => ChoiceChip(
+                            label: Text(level),
+                            selected: temp == level,
+                            onSelected: (_) =>
+                                setDialogState(() => temp = level),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+                if (askTemp && askSugar) const SizedBox(height: 10),
                 if (askSugar) ...[
                   const Text(
                     'Sugar',
@@ -426,6 +540,17 @@ class _CounterScreenState extends State<CounterScreen> {
                         .toList(),
                   ),
                 ],
+                const SizedBox(height: 10),
+                TextField(
+                  controller: note,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (optional)',
+                    hintText: 'e.g. less sweet, no straw',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
               ],
             ),
           ),
@@ -435,41 +560,87 @@ class _CounterScreenState extends State<CounterScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(
-                [
-                  if (askSugar) sugar,
-                  if (askIce) ice,
-                ].join(', '),
-              ),
+              onPressed: qty <= 0
+                  ? null
+                  : () => Navigator.of(dialogContext)
+                      .pop((qty: qty, note: combine())),
               child: const Text('Add'),
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(note.dispose);
   }
 
-  /// Adds a line. Plain items merge with an identical line; bundle lines (an
-  /// item ordered with add-ons) never merge, so each keeps its own add-ons.
-  void _addWithNote(Product product, String note, {bool merge = true}) {
+  /// Adds a line. Items of their own merge with an identical line; a bundle's
+  /// lines never merge, so each keeps its own add-ons.
+  void _addLine(Product product, int qty, String note, {String? parentId}) {
     setState(() {
-      final index = merge
+      final index = parentId == null
           ? _cart.indexWhere(
-              (line) => line.product.sku == product.sku && line.note == note,
+              (line) =>
+                  line.parentId == null &&
+                  line.product.sku == product.sku &&
+                  line.note == note,
             )
           : -1;
       if (index >= 0) {
-        _cart[index].qty += 1;
+        _cart[index].qty += qty;
       } else {
-        _cart.add(_CartLine(product, 1, note));
+        _cart.add(_CartLine(product, qty, note, parentId));
       }
     });
+  }
+
+  /// Edits a line's note — every line, including an add-on, keeps its own.
+  Future<void> _editNote(_CartLine line) async {
+    final controller = TextEditingController(text: line.note);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(line.product.name),
+        content: SizedBox(
+          width: 340,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 2,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Note',
+              hintText: 'e.g. no sambal, extra spicy',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (value) =>
+                Navigator.of(dialogContext).pop(value.trim()),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || result == null) return;
+    setState(() => line.note = result);
   }
 
   void _changeQty(_CartLine line, int delta) {
     setState(() {
       line.qty += delta;
-      if (line.qty <= 0) _cart.remove(line);
+      if (line.qty <= 0) {
+        // A bundle's add-ons go when their parent line goes.
+        _cart.removeWhere((other) =>
+            identical(other, line) || other.parentId == line.id);
+      }
     });
   }
 
@@ -711,54 +882,101 @@ class _CounterScreenState extends State<CounterScreen> {
     );
   }
 
-  Widget _buildChips() {
+  /// The portal colour of a group, so the grid and the dropdown agree.
+  Color? _colorFor(String name) {
+    for (final product in _products) {
+      final key = product.category.trim().isEmpty
+          ? 'Others'
+          : product.category.trim();
+      if (key == name) return _parseColor(product.color);
+    }
+    return null;
+  }
+
+  int _countFor(String name) {
+    var count = 0;
+    for (final product in _products) {
+      final key = product.category.trim().isEmpty
+          ? 'Others'
+          : product.category.trim();
+      if (key == name) count += 1;
+    }
+    return count;
+  }
+
+  /// The menu group picker — the group decides which dishes the grid shows.
+  Widget _buildGroupPicker() {
     final groups = _groups;
     if (groups.isEmpty) return const SizedBox.shrink();
     final active = _activeName;
+    final color = _activeColor ?? Theme.of(context).colorScheme.primary;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
-      child: SizedBox(
-        height: 40,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          children: groups.map((name) {
-            final isActive = name == active;
-            Color? color;
-            for (final product in _products) {
-              final key = product.category.trim().isEmpty
-                  ? 'Others'
-                  : product.category.trim();
-              if (key == name) {
-                color = _parseColor(product.color);
-                break;
-              }
-            }
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(name),
-                selected: isActive,
-                onSelected: (_) {
-                  setState(() {
-                    _activeGroup = name;
-                    _query = '';
-                    _search.clear();
-                  });
-                  _persist('counter_group', name);
-                },
-                selectedColor: color ?? Theme.of(context).colorScheme.primary,
-                labelStyle: TextStyle(
-                  color: isActive ? Colors.white : null,
-                  fontWeight: FontWeight.w600,
-                ),
-                side: BorderSide(
-                  color: color?.withOpacity(0.6) ?? Colors.grey.shade600,
-                ),
-              ),
-            );
-          }).toList(),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: DropdownButtonFormField<String>(
+        value: active,
+        isExpanded: true,
+        icon: const Icon(Icons.expand_more),
+        borderRadius: BorderRadius.circular(12),
+        decoration: InputDecoration(
+          labelText: 'Menu group',
+          prefixIcon: Icon(Icons.category_outlined, color: color),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: color.withOpacity(0.6)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: color.withOpacity(0.6)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: color, width: 2),
+          ),
+          isDense: true,
         ),
+        items: [
+          for (final name in groups)
+            DropdownMenuItem(
+              value: name,
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: _colorFor(name) ?? Colors.grey,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight:
+                            name == active ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${_countFor(name)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        onChanged: (name) {
+          if (name == null) return;
+          setState(() {
+            _activeGroup = name;
+            _query = '';
+            _search.clear();
+          });
+          _persist('counter_group', name);
+        },
       ),
     );
   }
@@ -833,18 +1051,16 @@ class _CounterScreenState extends State<CounterScreen> {
             itemBuilder: (context, index) {
               final product = products[index];
               final isFav = _favs.contains(product.name);
-              final tint = searching ? null : activeColor;
+              // A solid card in the item's group colour, so the groups read at
+              // a glance — in a search too, where several groups are on screen.
+              final card = _parseColor(product.color) ??
+                  (searching ? null : activeColor) ??
+                  Theme.of(context).colorScheme.primary;
               return Material(
-                color: tint != null
-                    ? tint.withOpacity(0.18)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: card,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(
-                    color: tint != null
-                        ? tint.withOpacity(0.5)
-                        : Colors.grey.shade700,
-                  ),
+                  side: BorderSide(color: Colors.black.withOpacity(0.25)),
                 ),
                 child: InkWell(
                   onTap: product.available ? () => _add(product) : null,
@@ -865,9 +1081,9 @@ class _CounterScreenState extends State<CounterScreen> {
                                   product.name,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    color: tint != null ? Colors.white : null,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
@@ -881,11 +1097,9 @@ class _CounterScreenState extends State<CounterScreen> {
                                               product.price.toStringAsFixed(2),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
+                                      style: const TextStyle(
                                         fontSize: 11,
-                                        color: tint != null
-                                            ? Colors.white70
-                                            : Colors.grey,
+                                        color: Colors.white70,
                                       ),
                                     ),
                                   ),
@@ -894,7 +1108,7 @@ class _CounterScreenState extends State<CounterScreen> {
                                         style: TextStyle(
                                             fontSize: 10,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.redAccent)),
+                                            color: Colors.yellowAccent)),
                                 ],
                               ),
                             ],
@@ -914,7 +1128,7 @@ class _CounterScreenState extends State<CounterScreen> {
                                 isFav ? Icons.star : Icons.star_border,
                                 color: isFav
                                     ? const Color(0xFFFFD54F)
-                                    : (tint != null ? Colors.white54 : Colors.grey),
+                                    : Colors.white70,
                               ),
                               onPressed: () => _toggleFav(product.name),
                             ),
@@ -951,7 +1165,7 @@ class _CounterScreenState extends State<CounterScreen> {
           ),
         ),
         if (_favs.isNotEmpty) _buildQuickPicks(),
-        _buildChips(),
+        _buildGroupPicker(),
         Expanded(child: _buildProductGrid()),
       ],
     );
@@ -1052,7 +1266,7 @@ class _CounterScreenState extends State<CounterScreen> {
             ),
           )
         else
-          ..._cart.map(_cartLine),
+          ..._cartRows(),
         const SizedBox(height: 10),
         TextField(
           controller: _note,
@@ -1097,37 +1311,127 @@ class _CounterScreenState extends State<CounterScreen> {
     if (mounted && sheet) setState(() => _orderOpen = false);
   }
 
-  Widget _cartLine(_CartLine line) {
+  /// The cart, with each add-on drawn under the item it was ordered with.
+  List<Widget> _cartRows() {
+    final rows = <Widget>[];
+    final drawn = <String>{};
+    for (final line in _cart) {
+      // An add-on is drawn with its parent below.
+      if (line.parentId != null || drawn.contains(line.id)) continue;
+      rows.add(_cartLine(line));
+      drawn.add(line.id);
+      for (final addOn in _cart.where((other) => other.parentId == line.id)) {
+        rows.add(_cartLine(addOn, nested: true));
+        drawn.add(addOn.id);
+      }
+    }
+    // An add-on whose parent is no longer there still shows, flat.
+    for (final line in _cart) {
+      if (drawn.contains(line.id)) continue;
+      rows.add(_cartLine(line, nested: line.parentId != null));
+    }
+    return rows;
+  }
+
+  Widget _cartLine(_CartLine line, {bool nested = false}) {
     final lineTotal = line.product.price * line.qty;
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      leading: Text(
-        '${line.qty}x',
-        style: const TextStyle(fontWeight: FontWeight.bold),
-      ),
-      title: Text(line.product.name),
-      // The station is an internal detail; only the note (e.g. drink options)
-      // is worth showing under a cart line.
-      subtitle: line.note.isEmpty
-          ? null
-          : Text(
-              line.note,
-              style: const TextStyle(fontSize: 11, color: Colors.grey),
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.only(left: nested ? 22 : 0),
+      child: ListTile(
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        contentPadding: EdgeInsets.zero,
+        leading: nested
+            ? const Icon(
+                Icons.subdirectory_arrow_right,
+                size: 16,
+                color: Colors.grey,
+              )
+            : Text(
+                '${line.qty}x',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+        title: Text(
+          // A nested line carries its quantity here; its parent shows it in the
+          // leading column.
+          nested ? '${line.qty}x ${line.product.name}' : line.product.name,
+          style: nested ? const TextStyle(fontSize: 13) : null,
+        ),
+        // Every line keeps its own note, including an add-on. It is drawn as a
+        // button so it is obvious the note can be tapped.
+        subtitle: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: InkWell(
+              onTap: () => _editNote(line),
+              borderRadius: BorderRadius.circular(7),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(7),
+                  color: line.note.isEmpty
+                      ? theme.colorScheme.primary.withOpacity(0.10)
+                      : Colors.amber.withOpacity(0.18),
+                  border: Border.all(
+                    color: line.note.isEmpty
+                        ? theme.colorScheme.primary
+                        : Colors.amber.shade600,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      line.note.isEmpty
+                          ? Icons.add_comment_outlined
+                          : Icons.edit_note,
+                      size: 13,
+                      color: line.note.isEmpty
+                          ? theme.colorScheme.primary
+                          : Colors.amber.shade600,
+                    ),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        line.note.isEmpty ? 'Add note' : line.note,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: line.note.isEmpty
+                              ? theme.colorScheme.primary
+                              : Colors.amber.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline),
-            onPressed: () => _changeQty(line, -1),
           ),
-          Text('${_settings.currency}${lineTotal.toStringAsFixed(2)}'),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: () => _changeQty(line, 1),
-          ),
-        ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              iconSize: 20,
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: () => _changeQty(line, -1),
+            ),
+            Text('${_settings.currency}${lineTotal.toStringAsFixed(2)}'),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              iconSize: 20,
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () => _changeQty(line, 1),
+            ),
+          ],
+        ),
       ),
     );
   }

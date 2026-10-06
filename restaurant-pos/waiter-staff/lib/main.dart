@@ -409,13 +409,20 @@ class _OrderScreenState extends State<OrderScreen> {
   ];
   static const List<String> _iceLevels = ['Normal ice', 'Less ice', 'No ice'];
 
-  /// Asks for the levels the item wants (sugar and/or ice). Returns the note to
-  /// print — always set, e.g. "Normal sugar, Less ice" — or null if cancelled.
+  /// A hot drink — water, tea, coffee — is served Normal (hot) or Warm.
+  static const List<String> _tempLevels = ['Normal', 'Warm'];
+
+  /// Asks for the levels the item wants (temperature, sugar and/or ice).
+  /// Returns the note to print — e.g. "Warm, Less sugar" — or null if
+  /// cancelled.
   Future<String?> _askDrinkOptions(
     String itemName,
     bool askSugar,
     bool askIce,
   ) {
+    // Nothing iced is served hot, so it can be Normal or Warm.
+    final askTemp = !askIce;
+    var temp = _tempLevels.first;
     var sugar = _sugarLevels.first;
     var ice = _iceLevels.first;
     return showDialog<String>(
@@ -429,6 +436,24 @@ class _OrderScreenState extends State<OrderScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (askTemp) ...[
+                  const Text('Temperature',
+                      style: TextStyle(fontSize: 12, color: kMuted)),
+                  Wrap(
+                    spacing: 6,
+                    children: _tempLevels
+                        .map(
+                          (level) => ChoiceChip(
+                            label: Text(level),
+                            selected: temp == level,
+                            onSelected: (_) =>
+                                setDialogState(() => temp = level),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+                if (askTemp && askSugar) const SizedBox(height: 10),
                 if (askSugar) ...[
                   const Text('Sugar',
                       style: TextStyle(fontSize: 12, color: kMuted)),
@@ -475,6 +500,8 @@ class _OrderScreenState extends State<OrderScreen> {
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(
                 [
+                  // Normal is the default, so only Warm is worth printing.
+                  if (askTemp && temp != _tempLevels.first) temp,
                   if (askSugar) sugar,
                   if (askIce) ice,
                 ].join(', '),
@@ -1025,7 +1052,7 @@ class _OrderScreenState extends State<OrderScreen> {
         _searchField(),
         if (!searching) ...[
           if (_favs.isNotEmpty) _quickPicks(),
-          _chips(groups),
+          _groupPicker(groups),
         ],
         Row(
           children: [
@@ -1091,7 +1118,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     .toList()
                 : visibleItems
                     .map((item) =>
-                        _tile(item, color: activeColor, coloured: true))
+                        _tile(item, color: activeColor))
                     .toList(),
           ),
       ],
@@ -1171,71 +1198,85 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  Widget _chips(List<_MenuGroup> groups) {
+  /// The menu group picker — the same control as the POS Hub's order page.
+  Widget _groupPicker(List<_MenuGroup> groups) {
     if (groups.isEmpty) return const SizedBox.shrink();
     final activeName = groups.any((g) => g.name == _activeGroup)
         ? _activeGroup
         : groups.first.name;
+    final active = groups.firstWhere((g) => g.name == activeName);
+    final color = active.color ?? const Color(0xFF2E7D32);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: groups.map((group) {
-            final isActive = group.name == activeName;
-            final color = group.color;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Material(
-                color: isActive
-                    ? (color ?? const Color(0xFF2E7D32))
-                    : kSurface2,
-                shape: StadiumBorder(
-                  side: BorderSide(
-                    color: isActive
-                        ? (color ?? const Color(0xFF2E7D32))
-                        : (color?.withOpacity(0.55) ?? kLine),
-                  ),
-                ),
-                child: InkWell(
-                  customBorder: const StadiumBorder(),
-                  onTap: () {
-                    setState(() => _activeGroup = group.name);
-                    _persist('waiter_group', group.name);
-                  },
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                    child: Row(
-                      children: [
-                        Text(
-                          group.name,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: isActive ? Colors.white : (color ?? kMuted),
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                        Text(
-                          '${group.items.length}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: isActive
-                                ? Colors.white70
-                                : kMuted,
-                          ),
-                        ),
-                      ],
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DropdownButtonFormField<String>(
+        value: activeName,
+        isExpanded: true,
+        icon: const Icon(Icons.expand_more),
+        borderRadius: BorderRadius.circular(12),
+        dropdownColor: kSurface,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        decoration: InputDecoration(
+          labelText: 'Menu group',
+          labelStyle: const TextStyle(color: kMuted),
+          prefixIcon: Icon(Icons.category_outlined, color: color),
+          isDense: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: color.withOpacity(0.6)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: color.withOpacity(0.6)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: color, width: 2),
+          ),
+        ),
+        items: [
+          for (final group in groups)
+            DropdownMenuItem(
+              value: group.name,
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: group.color ?? kMuted,
+                      shape: BoxShape.circle,
                     ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      group.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: group.name == activeName
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${group.items.length}',
+                    style: const TextStyle(fontSize: 12, color: kMuted),
+                  ),
+                ],
               ),
-            );
-          }).toList(),
-        ),
+            ),
+        ],
+        onChanged: (name) {
+          if (name == null) return;
+          setState(() {
+            _activeGroup = name;
+            _query = '';
+            _search.clear();
+          });
+          _persist('waiter_group', name);
+        },
       ),
     );
   }
@@ -1243,20 +1284,19 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget _tile(
     MenuItem item, {
     Color? color,
-    bool coloured = false,
     String? groupLabel,
   }) {
     final radius = BorderRadius.circular(10);
-    final tint = coloured ? color : null;
+    // A solid card in the item's group colour, so the groups read at a glance
+    // — in a search too, where several groups are on screen.
+    final card = _parseColor(item.color) ?? color ?? kSurface2;
     final isFav = _favs.contains(item.name);
 
     return Material(
-      color: tint != null ? tint.withOpacity(0.18) : kSurface2,
+      color: card,
       shape: RoundedRectangleBorder(
         borderRadius: radius,
-        side: BorderSide(
-          color: tint != null ? tint.withOpacity(0.5) : kLine,
-        ),
+        side: BorderSide(color: Colors.black.withOpacity(0.25)),
       ),
       child: InkWell(
         onTap: item.available ? () => _addItem(item) : null,
@@ -1277,10 +1317,10 @@ class _OrderScreenState extends State<OrderScreen> {
                         item.name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
-                          color: tint != null ? Colors.white : null,
+                          color: Colors.white,
                         ),
                       ),
                     ),
@@ -1291,19 +1331,19 @@ class _OrderScreenState extends State<OrderScreen> {
                             groupLabel ?? item.station,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 11,
-                              color: tint != null ? Colors.white70 : kMuted,
+                              color: Colors.white70,
                             ),
                           ),
                         ),
                         if (!item.available)
-                          Text(
+                          const Text(
                             'SOLD OUT',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: tint != null ? kStar : const Color(0xFFF87171),
+                              color: kStar,
                             ),
                           ),
                       ],
@@ -1323,9 +1363,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         : 'Add to quick picks',
                     icon: Icon(
                       isFav ? Icons.star : Icons.star_border,
-                      color: isFav
-                          ? kStar
-                          : (tint != null ? Colors.white54 : kMuted),
+                      color: isFav ? kStar : Colors.white70,
                     ),
                     onPressed: () => _toggleFav(item.name),
                   ),

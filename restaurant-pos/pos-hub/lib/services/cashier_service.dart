@@ -243,63 +243,71 @@ class CashierService {
     unawaited(_dispatcher.dispatchNext().catchError((Object _) {}));
   }
 
-  /// Station each item should print at, after applying the portal's "add-on
-  /// for" rule: an add-on item (e.g. a Lauk-pauk curry) ordered together with
-  /// its parent group (e.g. Roti Canai) prints on the parent's station, so one
-  /// ticket carries the roti and its curry. Also returns the product lookup so
-  /// tickets can nest add-ons under the item they were ordered with.
-  Future<({Map<String, String> overrides, Map<String, Product> bySku})>
-      _stationOverrides(Order order) async {
-    final products = await _db.getProducts();
-    final bySku = {for (final product in products) product.sku: product};
+  /// The station each line prints at, plus the product lookup tickets need.
+  ///
+  /// An add-on prints on the station of the item it was ordered with — the most
+  /// recent item whose group it is an add-on for — so `Nasi Lemak Biasa` with
+  /// `Rendang Kerang` prints together on the nasi lemak station even when the
+  /// same bill also holds a roti canai. When that parent is not on the bill the
+  /// add-on keeps its own station.
+  Future<({Map<int, String> byItemId, Map<String, Product> bySku})>
+      _stationPlan(Order order) async {
+    final bySku = productsBySku(await _db.getProducts());
+    final byItemId = <int, String>{};
 
-    // The station each group uses on this order.
-    final stationByGroup = <String, String>{};
-    for (final item in order.items) {
-      final group = bySku[item.sku]?.category ?? '';
-      if (group.isEmpty) continue;
-      stationByGroup.putIfAbsent(
-        group,
-        () => item.station.isEmpty ? 'KITCHEN' : item.station,
-      );
-    }
-
-    final overrides = <String, String>{};
-    for (final item in order.items) {
-      final parents = bySku[item.sku]?.addOnFor ?? '';
-      if (parents.isEmpty) continue;
-      // The item can be an add-on for several groups; follow whichever parent
-      // is on this order.
-      for (final parent in parents.split('|')) {
-        final parentStation = stationByGroup[parent];
-        if (parentStation != null) {
-          overrides[item.sku] = parentStation;
-          break;
-        }
+    for (final line in groupOrderItems(order.items, bySku)) {
+      final station = _ownStation(line.item);
+      byItemId[_itemKey(line.item)] = station;
+      // An add-on is printed under its parent, on the parent's ticket.
+      for (final child in line.children) {
+        byItemId[_itemKey(child)] = station;
       }
     }
-    return (overrides: overrides, bySku: bySku);
+    return (byItemId: byItemId, bySku: bySku);
   }
 
-  String _stationFor(OrderItem item, Map<String, String> overrides) =>
-      overrides[item.sku] ?? (item.station.isEmpty ? 'KITCHEN' : item.station);
+  /// Lines are matched by id; a line that was never stored falls back to its
+  /// identity so two identical items never share a station.
+  static int _itemKey(OrderItem item) => item.id ?? identityHashCode(item);
+
+  static String _ownStation(OrderItem item) =>
+      item.station.isEmpty ? 'KITCHEN' : item.station;
+
+  String _stationFor(OrderItem item, Map<int, String> byItemId) =>
+      byItemId[_itemKey(item)] ?? _ownStation(item);
 
   Future<void> sendStationTickets(Order order) async {
-    final data = await _stationOverrides(order);
-    final stations = <String>{};
-    for (final item in order.items) {
-      stations.add(_stationFor(item, data.overrides));
-    }
+    final plan = await _stationPlan(order);
+    final stations = <String>{
+      for (final item in order.items) _stationFor(item, plan.byItemId),
+    };
     for (final station in stations) {
-      await _db.enqueue(
-        station,
-        '',
-        _ticketPayload(station, order, data.overrides, data.bySku),
-      );
+      await _db.enqueue(station, '', _ticketPayload(station, order, plan));
     }
     // Printing runs in the background: awaiting it would keep the caller (and
     // the UI, or the waiter's HTTP request) waiting for every Bluetooth ticket
     // plus the per-printer cooldown.
+    _kickPrinter();
+  }
+
+  /// The exact text each station's ticket will carry, without printing it.
+  /// Used by the till's ticket preview so a bill can be checked before it is
+  /// sent to the kitchen.
+  Future<Map<String, String>> ticketPreviews(Order order) async {
+    final plan = await _stationPlan(order);
+    final stations = <String>{
+      for (final item in order.items) _stationFor(item, plan.byItemId),
+    };
+    return {
+      for (final station in stations)
+        station: _ticketPayload(station, order, plan),
+    };
+  }
+
+  /// Queues one station's ticket on its own — the preview's per-station print.
+  Future<void> sendStationTicket(Order order, String station) async {
+    final plan = await _stationPlan(order);
+    await _db.enqueue(station, '', _ticketPayload(station, order, plan));
     _kickPrinter();
   }
 
@@ -481,20 +489,15 @@ class CashierService {
 
   /// Enqueues kitchen tickets for a subset of an order's items.
   Future<void> _sendTicketsFor(Order order, List<OrderItem> items) async {
-    // Overrides are computed from the whole order, so an add-on added later
+    // The plan is computed from the whole order, so an add-on added later
     // still lands on its parent's station.
-    final data = await _stationOverrides(order);
-    final stations = <String>{};
-    for (final item in items) {
-      stations.add(_stationFor(item, data.overrides));
-    }
+    final plan = await _stationPlan(order);
+    final stations = <String>{
+      for (final item in items) _stationFor(item, plan.byItemId),
+    };
     final partial = order.copyWith(items: items);
     for (final station in stations) {
-      await _db.enqueue(
-        station,
-        '',
-        _ticketPayload(station, partial, data.overrides, data.bySku),
-      );
+      await _db.enqueue(station, '', _ticketPayload(station, partial, plan));
     }
     _kickPrinter();
   }
@@ -687,9 +690,9 @@ class CashierService {
   String _ticketPayload(
     String station,
     Order order,
-    Map<String, String> overrides,
-    Map<String, Product> bySku,
+    ({Map<int, String> byItemId, Map<String, Product> bySku}) plan,
   ) {
+    final bySku = plan.bySku;
     final sb = StringBuffer();
     final takeAway = order.orderType == 'take_away';
     const rule = '------------------------------';
@@ -706,7 +709,7 @@ class CashierService {
     sb.writeln(rule);
 
     final onStation = order.items
-        .where((item) => _stationFor(item, overrides) == station)
+        .where((item) => _stationFor(item, plan.byItemId) == station)
         .toList();
 
     var number = 0;
@@ -717,6 +720,8 @@ class CashierService {
       for (final addOn in line.children) {
         final qty = addOn.qty > 1 ? ' X ${addOn.qty}' : '';
         sb.writeln('    - ${addOn.name}$qty');
+        // An add-on keeps its own note, e.g. "gravy on the side".
+        if (addOn.note.isNotEmpty) sb.writeln('    - ${addOn.note}');
       }
       sb.writeln('');
     }

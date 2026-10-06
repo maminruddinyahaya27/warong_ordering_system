@@ -70,7 +70,12 @@ void main() {
 
     await tester.tap(find.text('Teh O (Panas)').first);
     await tester.pump();
+    // Adding now asks for a quantity and a note.
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pump();
     await tester.tap(find.text('Teh Tarik (Panas)').first);
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pump();
     expect(find.text('1x'), findsNWidgets(2), reason: 'two cart lines');
     expect(find.text('Total RM4.95'), findsOneWidget);
