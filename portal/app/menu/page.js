@@ -202,7 +202,11 @@ export default async function MenuPage({ searchParams }) {
                   Export JSON
                 </Link>
               </header>
-              <MenuTable items={data.items} currency={data.currency} />
+              <MenuTable
+                items={data.items}
+                currency={data.currency}
+                groups={data.groups}
+              />
             </section>
           ) : (
             buildSections(data.items, data.groups).map((section) => (
@@ -224,6 +228,7 @@ export default async function MenuPage({ searchParams }) {
                   items={section.items}
                   currency={data.currency}
                   showGroup={false}
+                  groups={data.groups}
                 />
               </section>
             ))

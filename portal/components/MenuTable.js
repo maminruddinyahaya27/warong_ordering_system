@@ -7,7 +7,7 @@ import { useState } from 'react';
 import BulkBar from '@/components/BulkBar';
 import useBulkSelection from '@/components/useBulkSelection';
 
-export default function MenuTable({ items, currency, showGroup = true }) {
+export default function MenuTable({ items, currency, showGroup = true, groups = [] }) {
   const router = useRouter();
   // Carry the current filters through an edit, so saving returns to the same
   // filtered list instead of dropping the search/group/station.
@@ -29,6 +29,25 @@ export default function MenuTable({ items, currency, showGroup = true }) {
     if (draftPrices[item.id] !== undefined) return draftPrices[item.id];
     return Number(item.price).toFixed(2);
   }
+
+  // The ordering apps print at the group's station whenever the group has one;
+  // the item's own station is only a fallback (see app/api/export/route.js).
+  const stationByGroup = new Map(
+    (groups || []).map((group) => [group.name, (group.station || '').trim()])
+  );
+  const printedStation = (item) =>
+    stationByGroup.get(item.group) || item.station || 'KITCHEN';
+  const stationOverridden = (item) => {
+    const fromGroup = stationByGroup.get(item.group);
+    return !!fromGroup && !!item.station && item.station !== fromGroup;
+  };
+  // `options` carries the drink keywords, e.g. "drink,sugar,ice".
+  const optionsOf = (item) => (item.options || '').split(',').filter(Boolean);
+  const isDrink = (item) => optionsOf(item).includes('drink');
+  const drinkOptions = (item) =>
+    optionsOf(item)
+      .filter((option) => option !== 'drink')
+      .join(', ');
 
   function isDirty(item) {
     if (draftPrices[item.id] === undefined) return false;
@@ -213,11 +232,18 @@ export default function MenuTable({ items, currency, showGroup = true }) {
                   <td>
                     <div style={{ fontWeight: 600 }}>{item.name}</div>
                     <div className="muted small">
-                      {item.options === 'drink' ? 'Drink' : 'Food'}
+                      {isDrink(item)
+                        ? `Drink${drinkOptions(item) ? ` · ${drinkOptions(item)}` : ''}`
+                        : 'Food'}
                     </div>
                   </td>
                   <td>
-                    <span className="badge">{item.station}</span>
+                    <span className="badge">{printedStation(item)}</span>
+                    {stationOverridden(item) ? (
+                      <div className="muted small" style={{ marginTop: 2 }}>
+                        own: {item.station}
+                      </div>
+                    ) : null}
                   </td>
                   {showGroup ? (
                     <td>
