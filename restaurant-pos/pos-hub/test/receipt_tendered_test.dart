@@ -148,6 +148,51 @@ void main() {
     expect(all.items.every((item) => item.paid), isTrue);
   });
 
+  test('a cancelled payment counts as no money taken', () async {
+    final cashier = CashierService.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '9',
+      items: [line('Roti Kosong', 1.5, 1)],
+    );
+
+    // Backing out of the payment dialog leaves the order unchanged: the items
+    // picked for this round must not be marked paid.
+    expect(CashierService.tookPayment(order, order), isFalse);
+
+    // A real part payment does count.
+    final part =
+        await cashier.addPayment(order.id!, method: 'cash', tendered: 1.0);
+    expect(CashierService.tookPayment(order, part), isTrue);
+    expect(part.balance, greaterThan(0));
+  });
+
+  test('paying one of two plates splits the line into a paid one', () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '4',
+      items: [line('Nasi Lemak Biasa', 4.0, 2)],
+    );
+    final whole = order.items.single;
+    expect(whole.qty, 2);
+
+    // Pay one plate of the two.
+    await cashier.recordPartPayment(order, {whole.id!: 1});
+
+    final after = (await db.getOrder(order.id!))!;
+    expect(after.items.length, 2, reason: 'the paid plate is its own line');
+    final paid = after.items.where((item) => item.paid).toList();
+    final open = after.items.where((item) => !item.paid).toList();
+    expect(paid.single.qty, 1, reason: 'the paid plate is slashed on its own');
+    expect(open.single.qty, 1, reason: 'the other plate stays open');
+    expect(after.items.fold<double>(0, (sum, i) => sum + i.qty), 2,
+        reason: 'no plate is lost or duplicated');
+  });
+
   test('a part payment receipt lists only the items paid', () async {
     final cashier = CashierService.instance;
     final db = PrintQueueDb.instance;

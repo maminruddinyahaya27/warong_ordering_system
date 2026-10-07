@@ -127,7 +127,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (!mounted || mode == null) return;
 
     double? partial;
-    var partialIds = const <int>[];
+    var partialUnits = const <int, int>{};
     if (mode == 'partial') {
       final products = await _db.getProducts();
       if (!mounted) return;
@@ -139,32 +139,47 @@ class _OrdersScreenState extends State<OrdersScreen> {
       );
       if (!mounted || picked == null || picked.amount <= 0) return;
       partial = picked.amount;
-      partialIds = picked.itemIds;
+      partialUnits = picked.paidUnits;
     }
 
     final settled = await settleOrder(context, order, firstAmount: partial);
     if (settled == null || !mounted) return;
+
+    // The cashier may have backed out of the payment dialog. Nothing was taken
+    // this round, so the bill is left as it was — the picked items are not
+    // marked paid (which matters when the bill was already part paid, where the
+    // settle loop returns the untouched order instead of null).
+    if (!CashierService.tookPayment(order, settled)) {
+      if (partialUnits.isNotEmpty) {
+        _snack('No payment taken — the bill is unchanged');
+      }
+      return;
+    }
+
+    // The money is taken, so record the units it covered straight away — before
+    // the receipt question — otherwise declining the receipt would leave an
+    // already paid item selectable in the picker.
+    var paidIds = const <int>[];
+    if (order.id != null) {
+      if (partialUnits.isNotEmpty) {
+        paidIds = await _cashier.recordPartPayment(order, partialUnits);
+      } else if (settled.isSettled) {
+        await _db.markAllOrderItemsPaid(order.id!);
+      }
+    }
     AppEvents.ordersChanged();
+    if (!mounted) return;
 
     // Always offer the receipt — including after a part payment, where the
     // printed receipt is the record of what was paid this round.
     final print = await askPrintReceipt(context, settled.orderNo);
-
-    // Lines are only flagged as paid once the receipt actually prints, so an
-    // abandoned flow leaves the picker untouched.
     if (print) {
-      if (partialIds.isNotEmpty && partial != null) {
-        // Part payment: the receipt covers only the items paid this round.
-        await _cashier.printPartialReceipt(order, partialIds, partial);
+      if (paidIds.isNotEmpty && partial != null) {
+        // Part payment: the receipt covers only the units paid this round.
+        final fresh = await _db.getOrder(order.id!) ?? order;
+        await _cashier.printPartialReceipt(fresh, paidIds, partial);
       } else {
         await _cashier.reprintReceipt(settled);
-      }
-      if (order.id != null) {
-        if (partialIds.isNotEmpty) {
-          await _db.markOrderItemsPaid(order.id!, partialIds);
-        } else {
-          await _db.markAllOrderItemsPaid(order.id!);
-        }
       }
     }
 

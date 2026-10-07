@@ -4,16 +4,16 @@ import '../models/order.dart';
 import '../models/product.dart';
 import '../services/order_grouping.dart';
 
-/// Lets the cashier tick the items to pay now. Returns the amount to charge —
-/// tax shared in proportion to the ticked items — plus the line ids to mark as
-/// paid, or null when cancelled.
-Future<({double amount, List<int> itemIds})?> showPartialPicker(
+/// Lets the cashier tick the lines to pay now. Returns the amount to charge —
+/// tax shared in proportion to the ticked lines — plus the units to mark paid
+/// per line id, or null when cancelled.
+Future<({double amount, Map<int, int> paidUnits})?> showPartialPicker(
   BuildContext context, {
   required Order order,
   required List<Product> products,
   required String currency,
 }) {
-  return showDialog<({double amount, List<int> itemIds})>(
+  return showDialog<({double amount, Map<int, int> paidUnits})>(
     context: context,
     builder: (context) => _PartialPicker(
       order: order,
@@ -41,9 +41,10 @@ class _PartialPicker extends StatefulWidget {
 class _PartialPickerState extends State<_PartialPicker> {
   late final List<GroupedOrderLine> _lines;
 
-  /// The units ticked so far, keyed "lineIndex:unit". A line of two shows two
-  /// rows so one plate can be paid without the other.
-  final Set<String> _picked = {};
+  /// The lines ticked so far, by index. The list is shaped like the order —
+  /// one row per ordered line, its add-ons nested under it — so `Capati x 3` is
+  /// a single row and the curry ordered with the second Capati rides with it.
+  final Set<int> _picked = {};
 
   @override
   void initState() {
@@ -56,38 +57,14 @@ class _PartialPickerState extends State<_PartialPicker> {
 
   int get _paidCount => _lines.where((line) => line.item.paid).length;
 
-  /// How many of a line's units are ticked.
-  int _pickedUnits(int index) {
-    var count = 0;
-    for (var unit = 0; unit < _lines[index].item.qty; unit += 1) {
-      if (_picked.contains('$index:$unit')) count += 1;
-    }
-    return count;
-  }
-
-  /// A line counts as paid once every one of its units is ticked, and then its
-  /// add-ons are covered too.
-  bool _fullyPicked(int index) =>
-      _pickedUnits(index) == _lines[index].item.qty;
-
-  /// The receipt-style number of a line's first unit.
-  int _firstNumber(int index) {
-    var number = 1;
-    for (var i = 0; i < index; i += 1) {
-      number += _lines[i].item.qty;
-    }
-    return number;
-  }
-
   double get _pickedSubtotal {
     var sum = 0.0;
-    for (var index = 0; index < _lines.length; index += 1) {
+    for (final index in _picked) {
       final line = _lines[index];
-      sum += line.item.unitPrice * _pickedUnits(index);
-      if (_fullyPicked(index)) {
-        for (final child in line.children) {
-          sum += child.unitPrice * child.qty;
-        }
+      sum += line.item.unitPrice * line.item.qty;
+      // A picked line takes its add-ons with it.
+      for (final child in line.children) {
+        sum += child.unitPrice * child.qty;
       }
     }
     return (sum * 100).roundToDouble() / 100;
@@ -102,19 +79,18 @@ class _PartialPickerState extends State<_PartialPicker> {
         100;
   }
 
-  List<int> get _pickedIds {
-    final ids = <int>[];
-    for (var index = 0; index < _lines.length; index += 1) {
-      if (!_fullyPicked(index)) continue;
+  /// The units to mark paid, per line id: a picked line takes its whole
+  /// quantity, and its add-ons come with it.
+  Map<int, int> get _paidUnits {
+    final units = <int, int>{};
+    for (final index in _picked) {
       final line = _lines[index];
-      // A fully picked item covers its add-ons too, so the receipt and the
-      // paid markers include the whole bundle.
-      if (line.item.id != null) ids.add(line.item.id!);
+      if (line.item.id != null) units[line.item.id!] = line.item.qty;
       for (final child in line.children) {
-        if (child.id != null) ids.add(child.id!);
+        if (child.id != null) units[child.id!] = child.qty;
       }
     }
-    return ids;
+    return units;
   }
 
   @override
@@ -140,7 +116,7 @@ class _PartialPickerState extends State<_PartialPicker> {
             const SizedBox(height: 10),
             Text(
               'Selected $currency${_amount.toStringAsFixed(2)} · '
-              '${_picked.length} item(s) of '
+              '${_picked.length} line(s) of '
               '$currency${widget.order.total.toStringAsFixed(2)}'
               '${_paidCount > 0 ? ' · $_paidCount paid' : ''}',
               style: const TextStyle(fontWeight: FontWeight.w600),
@@ -158,7 +134,7 @@ class _PartialPickerState extends State<_PartialPicker> {
               ? null
               : () => Navigator.pop(
                     context,
-                    (amount: _amount, itemIds: _pickedIds),
+                    (amount: _amount, paidUnits: _paidUnits),
                   ),
           child: const Text('Continue'),
         ),
@@ -170,41 +146,69 @@ class _PartialPickerState extends State<_PartialPicker> {
     final line = _lines[index];
     final currency = widget.currency;
     final paid = line.item.paid;
-    final qty = line.item.qty;
-    final first = _firstNumber(index);
     const struck = TextStyle(
       decoration: TextDecoration.lineThrough,
       color: Colors.grey,
     );
-    return [
-      // One row per unit: two of the same dish are two numbered lines, so one
-      // plate can be paid on its own.
-      for (var unit = 0; unit < qty; unit += 1)
-        CheckboxListTile(
+    // The same shape as the order list: the quantity on the line, the add-ons
+    // nested under it.
+    final title = '${index + 1}. ${line.item.name}'
+        '${line.item.qty > 1 ? ' x ${line.item.qty}' : ''}';
+
+    // A line already paid is shown as paid — not as a ticked box, which reads
+    // like something still picked.
+    if (paid) {
+      return [
+        ListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: paid || _picked.contains('$index:$unit'),
-          // An item already covered by a part payment cannot be picked again.
-          onChanged: paid
-              ? null
-              : (value) => setState(() {
-                    final key = '$index:$unit';
-                    if (value == true) {
-                      _picked.add(key);
-                    } else {
-                      _picked.remove(key);
-                    }
-                  }),
-          title: Text(
-            '${first + unit}. ${line.item.name}',
-            style: paid ? struck : null,
+          leading:
+              const Icon(Icons.check_circle, size: 22, color: Colors.green),
+          title: Text(title, style: struck),
+          subtitle: const Text(
+            'paid',
+            style: TextStyle(fontSize: 11, color: Colors.green),
           ),
-          secondary: Text(
-            '$currency${line.item.unitPrice.toStringAsFixed(2)}',
-            style: paid ? struck : null,
+          trailing: Text(
+            '$currency${_ownAmount(line).toStringAsFixed(2)}',
+            style: struck,
           ),
         ),
+        ..._childRows(line, covered: true, struck: struck),
+      ];
+    }
+    return [
+      CheckboxListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
+        value: _picked.contains(index),
+        onChanged: (value) => setState(() {
+          if (value == true) {
+            _picked.add(index);
+          } else {
+            _picked.remove(index);
+          }
+        }),
+        title: Text(title),
+        secondary: Text('$currency${_ownAmount(line).toStringAsFixed(2)}'),
+      ),
+      ..._childRows(line, covered: false, struck: struck),
+    ];
+  }
+
+  /// What this line itself costs; its add-ons are priced on their own rows.
+  double _ownAmount(GroupedOrderLine line) =>
+      ((line.item.unitPrice * line.item.qty) * 100).roundToDouble() / 100;
+
+  /// The add-ons under a line: struck through once the line is paid.
+  List<Widget> _childRows(
+    GroupedOrderLine line, {
+    required bool covered,
+    required TextStyle struck,
+  }) {
+    final currency = widget.currency;
+    return [
       for (final child in line.children)
         Padding(
           padding: const EdgeInsets.only(left: 34, right: 8, bottom: 6),
@@ -213,14 +217,14 @@ class _PartialPickerState extends State<_PartialPicker> {
               Expanded(
                 child: Text(
                   '- ${child.name}${child.qty > 1 ? ' x ${child.qty}' : ''}',
-                  style: paid || child.paid
+                  style: covered || child.paid
                       ? struck
                       : const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),
               Text(
                 '$currency${child.lineTotal.toStringAsFixed(2)}',
-                style: paid || child.paid
+                style: covered || child.paid
                     ? struck
                     : const TextStyle(fontSize: 12, color: Colors.grey),
               ),

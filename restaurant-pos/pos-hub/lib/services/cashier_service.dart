@@ -125,6 +125,7 @@ class CashierService {
     String note = '',
     String orderType = 'dine_in',
     String idempotencyKey = '',
+    DateTime? at,
   }) async {
     if (items.isEmpty) {
       throw Exception('Order has no items');
@@ -135,7 +136,9 @@ class CashierService {
       throw Exception('Table number is required for dine-in orders');
     }
     final totals = computeTotals(items);
-    final createdAt = DateTime.now().millisecondsSinceEpoch;
+    // `at` lets a caller (and the tests) place an order on a given date; the
+    // running number is counted per date, so a new date starts again at 001.
+    final createdAt = (at ?? DateTime.now()).millisecondsSinceEpoch;
 
     final orderId = await _db.insertOrder(Order(
       tableNo: tableNo.trim(),
@@ -510,6 +513,68 @@ class CashierService {
 
   /// Receipt for a part payment: only the items the customer paid for this
   /// round, the amount taken, and what is left on the bill.
+  /// Whether a settle round actually took money — only then may the items it
+  /// covered be recorded as paid. Backing out of the payment dialog leaves the
+  /// bill exactly as it was, even when it was already part paid.
+  static bool tookPayment(Order before, Order after) =>
+      after.paid - before.paid > 0.005;
+
+  /// Records the units a part payment covered and returns those line ids.
+  ///
+  /// A line picked in full is flagged paid. A line picked in part is split: the
+  /// units paid become their own paid line (so the picker shows them as paid,
+  /// not as something to pick again) and the remaining units stay open.
+  ///
+  /// This runs as soon as the money is taken — not when the receipt prints — so
+  /// declining the receipt cannot leave paid items selectable.
+  Future<List<int>> recordPartPayment(
+    Order order,
+    Map<int, int> paidUnits,
+  ) async {
+    final orderId = order.id;
+    if (orderId == null) return const [];
+
+    final paidIds = <int>[];
+    for (final entry in paidUnits.entries) {
+      OrderItem? item;
+      for (final line in order.items) {
+        if (line.id == entry.key) {
+          item = line;
+          break;
+        }
+      }
+      if (item == null || item.id == null) continue;
+      final units = entry.value.clamp(0, item.qty);
+      if (units <= 0) continue;
+
+      if (units >= item.qty) {
+        await _db.markOrderItemsPaid(orderId, [item.id!]);
+        paidIds.add(item.id!);
+        continue;
+      }
+      final splitIds = await _db.insertOrderItems(orderId, [
+        OrderItem(
+          sku: item.sku,
+          name: item.name,
+          qty: units,
+          unitPrice: item.unitPrice,
+          lineTotal: _round2(item.unitPrice * units),
+          station: item.station,
+          note: item.note,
+          paid: true,
+        ),
+      ]);
+      final remaining = item.qty - units;
+      await _db.updateOrderItemQty(
+        item.id!,
+        remaining,
+        _round2(item.unitPrice * remaining),
+      );
+      paidIds.addAll(splitIds);
+    }
+    return paidIds;
+  }
+
   Future<void> printPartialReceipt(
     Order order,
     List<int> itemIds,

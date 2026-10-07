@@ -510,12 +510,13 @@ class PrintQueueDb {
         .update('orders', {'order_no': orderNo}, where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> insertOrderItems(int orderId, List<OrderItem> items) async {
+  /// Inserts the lines and returns their new row ids, in the given order.
+  Future<List<int>> insertOrderItems(int orderId, List<OrderItem> items) async {
     final db = await database;
+    final ids = <int>[];
     await db.transaction((txn) async {
-      final batch = txn.batch();
       for (final item in items) {
-        batch.insert('order_items', {
+        ids.add(await txn.insert('order_items', {
           'order_id': orderId,
           'sku': item.sku,
           'name': item.name,
@@ -525,10 +526,10 @@ class PrintQueueDb {
           'station': item.station,
           'note': item.note,
           'paid': item.paid ? 1 : 0,
-        });
+        }));
       }
-      await batch.commit(noResult: true);
     });
+    return ids;
   }
 
   Future<void> updateOrderPayment(
@@ -572,6 +573,18 @@ class PrintQueueDb {
       'station': item.station,
       'note': item.note,
       'paid': item.paid ? 1 : 0,
+    });
+  }
+
+  /// Deletes every transaction — orders, their lines, the payments taken and
+  /// the queued print jobs. Products and settings are kept.
+  Future<void> clearTransactions() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('jobs');
+      await txn.delete('order_payments');
+      await txn.delete('order_items');
+      await txn.delete('orders');
     });
   }
 

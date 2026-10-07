@@ -203,6 +203,36 @@ void main() {
     expect(first.orderNo.split('-').first, second.orderNo.split('-').first);
   });
 
+  test('the running number starts again on a new date', () async {
+    final cashier = CashierService.instance;
+
+    // Two orders on the 5th (a date no other test numbers against)…
+    final first = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '3',
+      items: [line('Roti Kosong', 1.5, 1)],
+      at: DateTime(2026, 1, 5, 23, 50),
+    );
+    final second = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '3',
+      items: [line('Roti Telur', 3.0, 1)],
+      at: DateTime(2026, 1, 5, 23, 55),
+    );
+    expect(first.orderNo, '260105-001-3');
+    expect(second.orderNo, '260105-002-3');
+
+    // …and the first order of the 6th starts that day over at 001.
+    final next = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '3',
+      items: [line('Roti Kosong', 1.5, 1)],
+      at: DateTime(2026, 1, 6, 0, 5),
+    );
+    expect(next.orderNo, '260106-001-3',
+        reason: 'a new date restarts the daily running number');
+  });
+
   test('a second dine-in order for the same table joins the open bill',      () async {
     final cashier = CashierService.instance;
     final db = PrintQueueDb.instance;

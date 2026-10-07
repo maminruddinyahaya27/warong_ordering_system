@@ -167,6 +167,42 @@ class _HubScreenState extends State<HubScreen> {
     if (mounted) setState(() => _productCount = count);
   }
 
+  /// Wipes the till's history: orders, payments and queued print jobs.
+  Future<void> _clearTransactions() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear all transactions?'),
+        content: const Text(
+          'Every order, the payments taken and the queued print jobs are '
+          'deleted. Products, prices and settings are kept, and order numbers '
+          'start again from 001.\n\nThis cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await db.clearTransactions();
+    AppEvents.ordersChanged();
+    await _refreshQueue();
+    await _refreshProductCount();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All transactions cleared')),
+    );
+  }
+
   /// The station list follows the synced catalogue, so station -> printer
   /// mapping uses exactly the station names the portal sends.
   Future<void> _refreshStations() async {
@@ -532,6 +568,25 @@ Cola x 2
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            const Text('Transactions',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            const Text(
+              'Clearing deletes every order, the payments taken and any queued '
+              'print jobs. Products, prices and settings are kept.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _clearTransactions,
+              icon: const Icon(Icons.delete_sweep_outlined),
+              label: const Text('Clear all transactions'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.redAccent,
+                side: const BorderSide(color: Colors.redAccent),
+              ),
             ),
             const SizedBox(height: 16),
             Row(
