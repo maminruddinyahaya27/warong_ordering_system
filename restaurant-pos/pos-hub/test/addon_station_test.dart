@@ -56,13 +56,22 @@ void main() {
     ]);
   });
 
-  OrderItem line(String sku, String name, double price) => OrderItem(
+  OrderItem line(
+    String sku,
+    String name,
+    double price, {
+    String key = '',
+    String parent = '',
+  }) =>
+      OrderItem(
         sku: sku,
         name: name,
         qty: 1,
         unitPrice: price,
         lineTotal: price,
         station: sku == 'rc_01' ? 'roti_capati' : 'nasi_lemak_lontong',
+        lineKey: key,
+        parentKey: parent,
       );
 
   /// The ticket text queued for [station], or null when nothing was queued.
@@ -156,5 +165,51 @@ void main() {
     expect(await ticketFor('roti_capati'), contains('Roti Canai'));
     expect(await ticketFor('nasi_lemak_lontong'), isNull,
         reason: 'the other stations are not printed by a single-station print');
+  });
+
+  test('a curry taken from its own group is not somebody else\'s add-on',
+      () async {
+    // Roti Canai and a Rendang Ayam rung up on their own lines: the curry must
+    // keep its own line and print at its own station, not follow the roti.
+    await CashierService.instance.createOrder(
+      channel: 'counter',
+      tableNo: '4',
+      items: [
+        line('rc_01', 'Roti Canai', 2.5, key: 'L1'),
+        line('lp_06', 'Rendang Kerang', 5, key: 'L2'),
+      ],
+    );
+
+    final roti = await ticketFor('roti_capati');
+    expect(roti, isNotNull);
+    expect(roti, contains('Roti Canai'));
+    expect(roti, isNot(contains('Rendang Kerang')),
+        reason: 'the curry was taken on its own, so it is not an add-on');
+
+    final curry = await ticketFor('nasi_lemak_lontong');
+    expect(curry, isNotNull);
+    expect(curry, contains('Rendang Kerang'),
+        reason: 'it prints at its own station');
+  });
+
+  test('an add-on still follows the line it was ordered with', () async {
+    // The same curry, this time rung up as the roti's add-on.
+    await CashierService.instance.createOrder(
+      channel: 'counter',
+      tableNo: '4',
+      items: [
+        line('rc_01', 'Roti Canai', 2.5, key: 'L1'),
+        line('lp_06', 'Rendang Kerang', 5, key: 'L2', parent: 'L1'),
+      ],
+    );
+
+    final roti = await ticketFor('roti_capati');
+    expect(roti, isNotNull);
+    expect(roti, contains('Roti Canai'));
+    expect(roti, contains('    - Rendang Kerang'),
+        reason: 'the add-on prints with the line it was ordered with');
+
+    expect(await ticketFor('nasi_lemak_lontong'), isNull,
+        reason: 'and not at its own station');
   });
 }

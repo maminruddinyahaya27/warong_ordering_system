@@ -405,6 +405,10 @@ class PosHttpServer {
         station: product?.station ??
             (map['station'] ?? 'KITCHEN').toString(),
         note: (map['note'] ?? '').toString(),
+        // The sender can say how the line was rung up: its own key and, for an
+        // add-on, the key of the line it was ordered with.
+        lineKey: (map['lineKey'] ?? '').toString(),
+        parentKey: (map['parentKey'] ?? '').toString(),
       ));
     }
     return items;

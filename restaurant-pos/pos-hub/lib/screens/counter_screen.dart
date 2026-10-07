@@ -36,6 +36,11 @@ class _CartLine {
         lineTotal: (product.price * qty * 100).roundToDouble() / 100,
         station: product.station,
         note: note,
+        // Keep how the line was rung up: its own key, and the key of the item
+        // it was ordered with when it came from a bundle dialog, so an add-on
+        // nests under its parent while a line taken on its own never does.
+        lineKey: id,
+        parentKey: parentId ?? '',
       );
 }
 

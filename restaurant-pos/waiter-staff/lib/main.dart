@@ -890,6 +890,11 @@ class _OrderScreenState extends State<OrderScreen> {
               'price': i.price,
               'station': i.station,
               'note': i.note,
+              // How the line was rung up: an add-on keeps the key of the line it
+              // was ordered with, so the till never treats a dish taken on its
+              // own as somebody else's add-on.
+              'lineKey': i.id,
+              'parentKey': i.parentId ?? '',
             })
         .toList();
 

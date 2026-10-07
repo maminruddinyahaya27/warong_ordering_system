@@ -13,6 +13,13 @@ class OrderItem {
   /// a glance what is still owed (paid lines print struck through).
   final bool paid;
 
+  /// A stable key for this line, and for an add-on the key of the line it was
+  /// ordered with. An empty [parentKey] means the line was ordered on its own —
+  /// even when the product could be an add-on for something else, e.g. a
+  /// Rendang Ayam taken straight from the Lauk-pauk group.
+  final String lineKey;
+  final String parentKey;
+
   const OrderItem({
     this.id,
     this.orderId,
@@ -24,6 +31,8 @@ class OrderItem {
     required this.station,
     this.note = '',
     this.paid = false,
+    this.lineKey = '',
+    this.parentKey = '',
   });
 
   OrderItem copyWith({int? qty, bool? paid}) => OrderItem(
@@ -37,6 +46,8 @@ class OrderItem {
         station: station,
         note: note,
         paid: paid ?? this.paid,
+        lineKey: lineKey,
+        parentKey: parentKey,
       );
 
   Map<String, dynamic> toMap() => {
@@ -50,6 +61,8 @@ class OrderItem {
         'station': station,
         'note': note,
         'paid': paid ? 1 : 0,
+        'line_key': lineKey,
+        'parent_key': parentKey,
       };
 
   factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem(
@@ -63,6 +76,8 @@ class OrderItem {
         station: map['station'] as String? ?? 'KITCHEN',
         note: map['note'] as String? ?? '',
         paid: (map['paid'] as int? ?? 0) == 1,
+        lineKey: map['line_key'] as String? ?? '',
+        parentKey: map['parent_key'] as String? ?? '',
       );
 }
 
