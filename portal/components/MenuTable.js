@@ -36,7 +36,9 @@ export default function MenuTable({ items, currency, showGroup = true, groups = 
     (groups || []).map((group) => [group.name, (group.station || '').trim()])
   );
   const printedStation = (item) =>
-    (item.station || '').trim() || stationByGroup.get(item.group) || 'KITCHEN';
+    (item.station || '').trim() ||
+    stationByGroup.get(item.group) ||
+    'no print';
   const groupRouted = (item) => {
     const own = (item.station || '').trim();
     const fromGroup = stationByGroup.get(item.group);

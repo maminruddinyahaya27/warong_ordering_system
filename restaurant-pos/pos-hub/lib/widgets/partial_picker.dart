@@ -88,15 +88,19 @@ class _PartialPickerState extends State<_PartialPicker> {
   double get _remaining =>
       ((widget.order.total - widget.order.paid) * 100).roundToDouble() / 100;
 
-  /// The picked share of what is still owed, so tax is included in proportion.
+  /// The picked items' own value plus their share of the tax — never more than
+  /// the bill still owes, so an earlier part payment cannot be charged twice.
   double get _amount {
-    final unpaid = _unpaidSubtotal;
-    if (unpaid <= 0) return 0;
+    final subtotal = widget.order.subtotal;
+    if (subtotal <= 0) return 0;
     final picked = _pickedSubtotal;
-    // Picking everything still owed clears the bill exactly, even when an
-    // earlier part payment was an arbitrary cash amount.
-    if (picked + 0.0001 >= unpaid) return _remaining;
-    return ((_remaining * (picked / unpaid)) * 100).roundToDouble() / 100;
+    final share =
+        ((widget.order.total * (picked / subtotal)) * 100).roundToDouble() / 100;
+    final due = _remaining;
+    // Picking the rest of the bill settles it exactly, even when the earlier
+    // part payment was an arbitrary cash amount.
+    if (picked + 0.0001 >= _unpaidSubtotal || share > due) return due;
+    return share;
   }
 
   /// The units to mark paid, per line id: a picked line takes its whole

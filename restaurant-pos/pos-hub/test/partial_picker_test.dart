@@ -167,14 +167,15 @@ void main() {
       paid: 5,
     );
 
-    // The second Capati with its curry is RM8.00 of the RM12.50 still owed, so
-    // it takes 8.00/12.50 of the RM7.50 left: RM4.80.
-    final first = await pick(tester, lines: [1], order: partPaid);
-    expect(first?.amount, 4.80);
+    // The picked pair is worth RM8.00, but only RM7.50 is still owed, so that
+    // is what this round charges — the bill settles and the earlier RM5 is not
+    // charged again.
+    final picked = await pick(tester, lines: [1], order: partPaid);
+    expect(picked?.amount, 7.5);
 
-    // Picking the rest clears the bill exactly (RM7.50 - RM4.80).
-    final rest = await pick(tester, lines: [0], order: partPaid);
-    expect(rest?.amount, closeTo(2.70, 0.011));
+    // An untouched line on its own keeps its own value.
+    final other = await pick(tester, lines: [0], order: partPaid);
+    expect(other?.amount, 4.5);
   });
 
   testWidgets('a line already paid shows as paid and cannot be picked again',

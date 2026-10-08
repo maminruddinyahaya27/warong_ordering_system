@@ -125,7 +125,6 @@ export default function MenuItemForm({
   const selectedGroup = groups.find((group) => group.id === form.group) || null;
   const groupStation = (selectedGroup?.station || '').trim();
   const ownStation = form.station.trim();
-  const effectiveStation = ownStation || groupStation || 'KITCHEN';
   const groupDiffers =
     groupStation !== '' && ownStation !== '' && ownStation !== groupStation;
 
@@ -183,12 +182,11 @@ export default function MenuItemForm({
               <span>Station</span>
               <input
                 type="text"
-                required={!groupStation}
                 list="station-options"
                 value={form.station}
                 placeholder={groupStation
                   ? `empty — ${selectedGroup.name} routes to ${groupStation}`
-                  : 'e.g. goreng_goreng'}
+                  : 'leave empty for no ticket'}
                 onChange={(event) => update('station', event.target.value)}
               />
               <datalist id="station-options">
@@ -197,10 +195,19 @@ export default function MenuItemForm({
                 ))}
               </datalist>
               <span className="hint">
-                Prints at <strong>{effectiveStation}</strong>
-                {ownStation
-                  ? ' — this item’s own station.'
-                  : ` — the station set on the “${selectedGroup?.name}” group.`}
+                {ownStation ? (
+                  <>
+                    Prints at <strong>{ownStation}</strong> — this item&apos;s own
+                    station.
+                  </>
+                ) : groupStation ? (
+                  <>
+                    Prints at <strong>{groupStation}</strong> — the station set on
+                    the “{selectedGroup?.name}” group.
+                  </>
+                ) : (
+                  <>No station: nothing prints for this item.</>
+                )}
               </span>
             </label>
 
