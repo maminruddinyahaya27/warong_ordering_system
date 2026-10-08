@@ -64,6 +64,22 @@ class CashierService {
     return '$prefix-$running-$table';
   }
 
+  /// The next take-away number for today, e.g. `009`.
+  ///
+  /// Take-away orders and the take-away lines a table adds on ("one more to
+  /// take home") share one sequence, so the number on the bill's `TA` section
+  /// never clashes with a bag's.
+  Future<String> _nextTakeAwayNo() async {
+    final prefix = orderDayPrefix(DateTime.now());
+    final key = 'ta_seq_$prefix';
+    final settings = await _db.getAllSettings();
+    final stamped = int.tryParse(settings[key] ?? '') ?? 0;
+    final used = await _db.countOrdersWithPrefix('$prefix-TA');
+    final next = (stamped > used ? stamped : used) + 1;
+    await _db.setSetting(key, '$next');
+    return next.toString().padLeft(3, '0');
+  }
+
   // ----------------------------------------------------------- trading day
 
   Future<Map<String, dynamic>?> activeDay() => _db.getActiveDay();
@@ -215,11 +231,22 @@ class CashierService {
       throw Exception('Table number is required for dine-in orders');
     }
 
-    if (type == 'dine_in' && _settings.autoMergeTableOrders) {
+    // A table's open bill takes everything rung up for that table, including a
+    // take-away the table adds on ("one more to take home"): a take-away with a
+    // table number joins that bill. Without a table number it stays its own TA
+    // bill, as before.
+    if (tableNo.trim().isNotEmpty && _settings.autoMergeTableOrders) {
       final open = await _db.findOpenOrderForTable(tableNo);
       if (open != null) {
         if (items.isEmpty) throw Exception('Order has no items');
-        final updated = await addOrderItems(open.id!, items);
+        // A take-away gets one TA number and is tagged as its own section, so
+        // the bill can rule it off from the table's own lines.
+        final label =
+            type == 'take_away' ? 'TA - ${await _nextTakeAwayNo()}' : '';
+        final merged = label.isEmpty
+            ? items
+            : [for (final item in items) item.copyWith(section: label)];
+        final updated = await addOrderItems(open.id!, merged);
         await _db.recordRequest(idempotencyKey, open.id!);
         return (order: updated, merged: true, duplicate: false);
       }
@@ -279,13 +306,33 @@ class CashierService {
   String _stationFor(OrderItem item, Map<int, String> byItemId) =>
       byItemId[_itemKey(item)] ?? _ownStation(item);
 
-  Future<void> sendStationTickets(Order order) async {
+  /// The tickets a bill prints: one per station, and one more for each
+  /// take-away section the table added on, so a bag's ticket never mixes with
+  /// the table's.
+  Future<List<({String station, String section, String text})>> ticketSheets(
+    Order order,
+  ) async {
     final plan = await _stationPlan(order);
-    final stations = <String>{
-      for (final item in order.items) _stationFor(item, plan.byItemId),
-    };
-    for (final station in stations) {
-      await _db.enqueue(station, '', _ticketPayload(station, order, plan));
+    final sheets = <String, ({String station, String section})>{};
+    for (final item in order.items) {
+      final station = _stationFor(item, plan.byItemId);
+      sheets['$station\u0000${item.section}'] =
+          (station: station, section: item.section);
+    }
+    return [
+      for (final sheet in sheets.values)
+        (
+          station: sheet.station,
+          section: sheet.section,
+          text: _ticketPayload(sheet.station, order, plan,
+              section: sheet.section),
+        ),
+    ];
+  }
+
+  Future<void> sendStationTickets(Order order) async {
+    for (final sheet in await ticketSheets(order)) {
+      await _db.enqueue(sheet.station, '', sheet.text);
     }
     // Printing runs in the background: awaiting it would keep the caller (and
     // the UI, or the waiter's HTTP request) waiting for every Bluetooth ticket
@@ -293,24 +340,18 @@ class CashierService {
     _kickPrinter();
   }
 
-  /// The exact text each station's ticket will carry, without printing it.
-  /// Used by the till's ticket preview so a bill can be checked before it is
-  /// sent to the kitchen.
-  Future<Map<String, String>> ticketPreviews(Order order) async {
+  /// Queues one ticket on its own — the preview's per-ticket print.
+  Future<void> sendStationTicket(
+    Order order,
+    String station,
+    String section,
+  ) async {
     final plan = await _stationPlan(order);
-    final stations = <String>{
-      for (final item in order.items) _stationFor(item, plan.byItemId),
-    };
-    return {
-      for (final station in stations)
-        station: _ticketPayload(station, order, plan),
-    };
-  }
-
-  /// Queues one station's ticket on its own — the preview's per-station print.
-  Future<void> sendStationTicket(Order order, String station) async {
-    final plan = await _stationPlan(order);
-    await _db.enqueue(station, '', _ticketPayload(station, order, plan));
+    await _db.enqueue(
+      station,
+      '',
+      _ticketPayload(station, order, plan, section: section),
+    );
     _kickPrinter();
   }
 
@@ -624,6 +665,7 @@ class CashierService {
                 'price': item.unitPrice,
                 'line': item.lineTotal,
                 'addOn': childItems.contains(item),
+                'section': item.section,
               })
           .toList(),
       'subtotal': subtotal,
@@ -755,18 +797,29 @@ class CashierService {
   String _ticketPayload(
     String station,
     Order order,
-    ({Map<int, String> byItemId, Map<String, Product> bySku}) plan,
-  ) {
+    ({Map<int, String> byItemId, Map<String, Product> bySku}) plan, {
+    String section = '',
+  }) {
     final bySku = plan.bySku;
     final sb = StringBuffer();
     final takeAway = order.orderType == 'take_away';
     const rule = '------------------------------';
 
-    sb.writeln('ORDER - ${order.orderNo}');
-    // Dine-in is identified by its table, take-away by its TA number.
-    if (takeAway) {
-      sb.writeln('TABLE - ${order.orderNo}');
+    // A take-away rung up for a table joins that table's bill as its own
+    // section (`TA - 009`) and prints as its own take-away ticket, with the
+    // table it came from. Its order line carries the TA number, the same as the
+    // section shown on the bill.
+    final takeAwayNo = order.orderType == 'take_away'
+        ? order.takeAwayNo
+        : section.replaceFirst('TA - ', '').trim();
+    final isTakeAway = takeAway || takeAwayNo.isNotEmpty;
+
+    if (isTakeAway) {
+      sb.writeln('ORDER - TA - $takeAwayNo');
+      sb.writeln('TABLE - TAKE AWAY'
+          '${order.tableNo.isEmpty ? '' : '  (table ${order.tableNo})'}');
     } else {
+      sb.writeln('ORDER - ${order.orderNo}');
       sb.writeln(
         'TABLE - ${order.tableNo.isEmpty ? 'No table' : order.tableNo}',
       );
@@ -774,7 +827,9 @@ class CashierService {
     sb.writeln(rule);
 
     final onStation = order.items
-        .where((item) => _stationFor(item, plan.byItemId) == station)
+        .where((item) =>
+            _stationFor(item, plan.byItemId) == station &&
+            item.section == section)
         .toList();
 
     var number = 0;
@@ -843,6 +898,7 @@ class CashierService {
                 'price': i.unitPrice,
                 'line': i.lineTotal,
                 'addOn': childItems.contains(i),
+                'section': i.section,
               })
           .toList(),
       'subtotal': order.subtotal,

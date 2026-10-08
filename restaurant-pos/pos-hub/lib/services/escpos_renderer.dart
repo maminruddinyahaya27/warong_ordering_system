@@ -128,6 +128,8 @@ class EscPosRenderer {
 
     final items = (data['items'] as List?) ?? const [];
     var itemNumber = 0;
+    // A take-away the table added on is ruled off under its own TA number.
+    var section = '';
     for (final raw in items) {
       if (raw is! Map) continue;
       final name = (raw['name'] ?? '').toString();
@@ -135,6 +137,12 @@ class EscPosRenderer {
       final qtyText = _trimNumber(qty);
       final price = _money(raw['price']);
       final amount = _money(raw['line']);
+      final nextSection = (raw['section'] ?? '').toString();
+      if (nextSection != section) {
+        section = nextSection;
+        out.addAll(generator.hr());
+        if (section.isNotEmpty) line(section);
+      }
       if (raw['addOn'] == true) {
         // An add-on sits under the item it was ordered with.
         line('    - $name');

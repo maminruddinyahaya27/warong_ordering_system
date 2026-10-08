@@ -25,10 +25,11 @@ export function validateMenuItem(body, { partial = false } = {}) {
     }
   }
 
-  if (!partial || body.station !== undefined) {
+  if (body.station !== undefined) {
+    // Optional: an item with no station of its own prints where its group
+    // routes it, and a group may leave its station empty so each item decides.
     const station = String(body.station ?? '').trim();
-    if (!station) errors.push('station is required');
-    else if (station.length > 40) errors.push('station must be 40 characters or fewer');
+    if (station.length > 40) errors.push('station must be 40 characters or fewer');
     else values.station = station;
   }
 

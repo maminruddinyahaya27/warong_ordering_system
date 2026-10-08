@@ -30,16 +30,17 @@ export default function MenuTable({ items, currency, showGroup = true, groups = 
     return Number(item.price).toFixed(2);
   }
 
-  // The ordering apps print at the group's station whenever the group has one;
-  // the item's own station is only a fallback (see app/api/export/route.js).
+  // An item's own station wins; the group's station is the fallback for items
+  // that leave it empty (see app/api/export/route.js).
   const stationByGroup = new Map(
     (groups || []).map((group) => [group.name, (group.station || '').trim()])
   );
   const printedStation = (item) =>
-    stationByGroup.get(item.group) || item.station || 'KITCHEN';
-  const stationOverridden = (item) => {
+    (item.station || '').trim() || stationByGroup.get(item.group) || 'KITCHEN';
+  const groupRouted = (item) => {
+    const own = (item.station || '').trim();
     const fromGroup = stationByGroup.get(item.group);
-    return !!fromGroup && !!item.station && item.station !== fromGroup;
+    return !own && !!fromGroup;
   };
   // `options` carries the drink keywords, e.g. "drink,sugar,ice".
   const optionsOf = (item) => (item.options || '').split(',').filter(Boolean);
@@ -239,9 +240,9 @@ export default function MenuTable({ items, currency, showGroup = true, groups = 
                   </td>
                   <td>
                     <span className="badge">{printedStation(item)}</span>
-                    {stationOverridden(item) ? (
+                    {groupRouted(item) ? (
                       <div className="muted small" style={{ marginTop: 2 }}>
-                        own: {item.station}
+                        from {item.group}
                       </div>
                     ) : null}
                   </td>

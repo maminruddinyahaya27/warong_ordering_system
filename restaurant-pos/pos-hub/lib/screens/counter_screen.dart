@@ -636,12 +636,11 @@ class _CounterScreenState extends State<CounterScreen> {
     return true;
   }
 
-  /// Switching to take-away clears the table, since it will not be used.
+  /// Switching the order type keeps the table field as typed: a dine-in needs
+  /// it, a take-away may keep it (e.g. the table the customer waits at) but does
+  /// not require it.
   void _setOrderType(String type) {
-    setState(() {
-      _orderType = type;
-      if (type == 'take_away') _table.clear();
-    });
+    setState(() => _orderType = type);
   }
 
   Future<void> _sendToKitchen() async {
@@ -765,24 +764,23 @@ class _CounterScreenState extends State<CounterScreen> {
         const SizedBox(height: 8),
         Row(
           children: [
-            // Take-away has no table, so the field is hidden entirely.
-            if (_orderType == 'dine_in') ...[
-              Expanded(
-                child: TextField(
-                  controller: _table,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.done,
-                  // Done drops the keyboard, so it does not cover the grid.
-                  onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                  decoration: const InputDecoration(
-                    labelText: 'Table',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
+            // A dine-in needs its table; a take-away may keep the table the
+            // customer waits at — shown, never required.
+            Expanded(
+              child: TextField(
+                controller: _table,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                // Done drops the keyboard, so it does not cover the grid.
+                onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                decoration: InputDecoration(
+                  labelText: _orderType == 'dine_in' ? 'Table' : 'Table (optional)',
+                  isDense: true,
+                  border: const OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(width: 8),
-            ],
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: TextField(
                 controller: _server,

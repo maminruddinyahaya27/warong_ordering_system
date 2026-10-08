@@ -19,8 +19,8 @@ function groupColorMap(groups) {
   return map;
 }
 
-// A group's station (set in the portal) overrides each item's own station, so
-// the POS Hub only needs station -> printer mapping.
+// An item's own station wins; the group's station is the fallback for items
+// that do not set one (so a group can route a whole set of dishes at once).
 function groupStationMap(groups) {
   const map = new Map();
   for (const group of groups) {
@@ -35,7 +35,10 @@ function toArrayEntry(item, colorByName, stationByName) {
     id: item.sku,
     name: item.name,
     price: item.price,
-    station: stationByName?.get(group) || item.station,
+    // The item's own station is honoured when it has one — an item in
+    // "Lain-lain" can still print at the drinks station — and the group's
+    // station is used when the item leaves it empty.
+    station: item.station || stationByName?.get(group) || '',
     group,
     available: item.available !== false,
   };

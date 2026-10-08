@@ -218,17 +218,42 @@ class _OrdersScreenState extends State<OrdersScreen> {
     _snack('Kitchen tickets queued for ${order.orderNo}');
   }
 
-  /// Shows what each station's ticket will say, without printing anything —
-  /// and lets a single station's ticket be sent on its own.
+  /// Shows what each ticket will say, without printing anything — one per
+  /// station and per take-away section — and lets one be sent on its own.
   Future<void> _previewTickets(Order order) async {
-    final tickets = await _cashier.ticketPreviews(order);
+    final sheets = await _cashier.ticketSheets(order);
     if (!mounted) return;
     await showTicketPreview(
       context,
-      orderNo: order.orderNo,
-      tickets: tickets,
-      onPrint: (station) => _cashier.sendStationTicket(order, station),
+      orderNo: order.orderType == 'take_away'
+          ? order.takeAwayLabel
+          : order.orderNo,
+      tickets: [
+        for (final sheet in sheets)
+          (
+            label: _sheetLabel(order, sheet.station, sheet.section),
+            text: sheet.text,
+          ),
+      ],
+      onPrint: (index) => _cashier.sendStationTicket(
+        order,
+        sheets[index].station,
+        sheets[index].section,
+      ),
     );
+  }
+
+  /// How a ticket is titled in the preview: its station, and the document it
+  /// belongs to — the bill's order number, or the `TA - 009` a take-away the
+  /// table added on carries.
+  static String _sheetLabel(Order order, String station, String section) {
+    final name = station.trim().isEmpty ? 'KITCHEN' : station.toUpperCase();
+    final document = section.isNotEmpty
+        ? section
+        : (order.orderType == 'take_away'
+            ? order.takeAwayLabel
+            : order.orderNo);
+    return '$name \u00b7 $document';
   }
 
   Future<bool?> _confirm({
@@ -292,7 +317,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         Flexible(
                           child: Text(
                             current.orderType == 'take_away'
-                                ? 'Take Away - ${current.orderNo}'
+                                ? current.takeAwayLabel
                                 : current.orderNo,
                             style: const TextStyle(
                                 fontSize: 18, fontWeight: FontWeight.bold),
@@ -301,18 +326,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         const SizedBox(width: 8),
                         _statusChip(current.status),
                         const Spacer(),
-                        // Take-away is already in the title.
-                        if (current.orderType != 'take_away') ...[
-                          const Chip(
-                            label: Text('Dine-in'),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        Chip(
-                          label: Text(current.channel),
-                          visualDensity: VisualDensity.compact,
-                        ),
                         IconButton(
                           tooltip: 'Close',
                           icon: const Icon(Icons.close),
@@ -335,41 +348,59 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       const SizedBox(height: 4),
                       Text('Note: ${current.note}'),
                     ],
-                    if (editable) ...[
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Adjust quantities, remove a line, or add items — totals recompute automatically.',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                    const Divider(height: 24),
+                    for (var i = 0; i < current.items.length; i += 1) ...[
+                      // A take-away the table added on is ruled off under its
+                      // own TA number.
+                      if (current.items[i].section.isNotEmpty &&
+                          (i == 0 ||
+                              current.items[i - 1].section !=
+                                  current.items[i].section)) ...[
+                        const Divider(height: 20),
+                        Row(
+                          children: [
+                            const Icon(Icons.shopping_bag_outlined, size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              current.items[i].section,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      _orderLine(
+                        current.items[i],
+                        editable: editable,
+                        onDecrease: () => run(
+                          () => _cashier.setOrderItemQty(current.id!,
+                              current.items[i].id!, current.items[i].qty - 1),
+                          (updated) =>
+                              '${current.items[i].name} × ${current.items[i].qty - 1}',
+                        ),
+                        onIncrease: () => run(
+                          () => _cashier.setOrderItemQty(current.id!,
+                              current.items[i].id!, current.items[i].qty + 1),
+                          (updated) =>
+                              '${current.items[i].name} × ${current.items[i].qty + 1}',
+                        ),
+                        onRemove: () async {
+                          final item = current.items[i];
+                          final ok = await _confirm(
+                            title: 'Remove ${item.name}?',
+                            message: 'The line is removed from this order.',
+                            confirmLabel: 'Remove',
+                          );
+                          if (ok != true) return;
+                          await run(
+                            () => _cashier.setOrderItemQty(
+                                current.id!, item.id!, 0),
+                            (updated) => '${item.name} removed',
+                          );
+                        },
                       ),
                     ],
-                    const Divider(height: 24),
-                    ...current.items.map((item) => _orderLine(
-                          item,
-                          editable: editable,
-                          onDecrease: () => run(
-                            () => _cashier.setOrderItemQty(
-                                current.id!, item.id!, item.qty - 1),
-                            (updated) => '${item.name} × ${item.qty - 1}',
-                          ),
-                          onIncrease: () => run(
-                            () => _cashier.setOrderItemQty(
-                                current.id!, item.id!, item.qty + 1),
-                            (updated) => '${item.name} × ${item.qty + 1}',
-                          ),
-                          onRemove: () async {
-                            final ok = await _confirm(
-                              title: 'Remove ${item.name}?',
-                              message: 'The line is removed from this order.',
-                              confirmLabel: 'Remove',
-                            );
-                            if (ok != true) return;
-                            await run(
-                              () => _cashier.setOrderItemQty(
-                                  current.id!, item.id!, 0),
-                              (updated) => '${item.name} removed',
-                            );
-                          },
-                        )),
                     const Divider(height: 24),
                     _totalRow('Subtotal', current.subtotal),
                     _totalRow('Tax', current.tax),
@@ -591,8 +622,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Widget _buildTableBubble(Order order) {
-    final takeAway = order.tableNo.trim().isEmpty;
-    final label = takeAway ? 'TA' : order.tableNo.trim().toUpperCase();
+    // A take-away is a take-away whether or not it kept a table number.
+    final takeAway = order.orderType == 'take_away';
+    final table = order.tableNo.trim();
+    // A take-away shows its TA number, so two waiting bags are told apart; a
+    // dine-in shows its table.
+    final label = takeAway ? order.takeAwayLabel : table.toUpperCase();
+    // A take-away may keep the table the customer waits at — shown under the TA
+    // — but it is never required.
+    final sub = takeAway && table.isNotEmpty ? table.toUpperCase() : '';
     final partPaid = order.paid > 0 && !order.isSettled;
     final color = partPaid
         ? Colors.orange
@@ -615,16 +653,33 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           alignment: Alignment.center,
           padding: const EdgeInsets.all(6),
+          // One FittedBox around the whole label, so a two-line take-away
+          // bubble can never overflow its circle.
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(
-              label,
-              key: ValueKey('bill-${order.orderNo}'),
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  key: ValueKey('bill-${order.orderNo}'),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                if (sub.isNotEmpty)
+                  Text(
+                    sub,
+                    key: ValueKey('bill-table-${order.orderNo}'),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: color.withOpacity(0.8),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),

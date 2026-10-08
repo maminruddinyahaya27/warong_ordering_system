@@ -20,6 +20,11 @@ class OrderItem {
   final String lineKey;
   final String parentKey;
 
+  /// The part of the bill this line belongs to, e.g. `TA - 009` for a take-away
+  /// the table added on. Empty for the table's own lines; the bill prints a rule
+  /// before a new section.
+  final String section;
+
   const OrderItem({
     this.id,
     this.orderId,
@@ -33,9 +38,10 @@ class OrderItem {
     this.paid = false,
     this.lineKey = '',
     this.parentKey = '',
+    this.section = '',
   });
 
-  OrderItem copyWith({int? qty, bool? paid}) => OrderItem(
+  OrderItem copyWith({int? qty, bool? paid, String? section}) => OrderItem(
         id: id,
         orderId: orderId,
         sku: sku,
@@ -48,6 +54,7 @@ class OrderItem {
         paid: paid ?? this.paid,
         lineKey: lineKey,
         parentKey: parentKey,
+        section: section ?? this.section,
       );
 
   Map<String, dynamic> toMap() => {
@@ -63,6 +70,7 @@ class OrderItem {
         'paid': paid ? 1 : 0,
         'line_key': lineKey,
         'parent_key': parentKey,
+        'section': section,
       };
 
   factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem(
@@ -78,6 +86,7 @@ class OrderItem {
         paid: (map['paid'] as int? ?? 0) == 1,
         lineKey: map['line_key'] as String? ?? '',
         parentKey: map['parent_key'] as String? ?? '',
+        section: map['section'] as String? ?? '',
       );
 }
 
@@ -108,6 +117,17 @@ class Order {
 
   /// Lets a client retry a send without creating a second order.
   final String idempotencyKey;
+
+  /// The take-away running number — `001` from `261007-TA-001` — or empty for
+  /// a dine-in order.
+  String get takeAwayNo {
+    if (orderType != 'take_away') return '';
+    final parts = orderNo.split('-');
+    return parts.isEmpty ? '' : parts.last;
+  }
+
+  /// The short take-away label, e.g. `TA - 009`, for the order list and tickets.
+  String get takeAwayLabel => takeAwayNo.isEmpty ? 'TA' : 'TA - $takeAwayNo';
 
   const Order({
     this.id,

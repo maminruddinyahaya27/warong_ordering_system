@@ -11,7 +11,9 @@ const MenuItemSchema = new mongoose.Schema(
     sku: { type: String, required: true, trim: true },
     name: { type: String, required: true, trim: true },
     price: { type: Number, required: true, min: 0 },
-    station: { type: String, required: true, trim: true, default: 'Kitchen' },
+    // Prints here; empty means the item's group routes it (and if neither is
+    // set the till sends it to the kitchen's default station).
+    station: { type: String, default: '', trim: true },
     group: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'MenuGroup',

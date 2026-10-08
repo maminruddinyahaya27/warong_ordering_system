@@ -137,11 +137,15 @@ void main() {
       ],
     );
 
-    final preview = await CashierService.instance.ticketPreviews(order);
-    expect(preview.keys.toSet(), {'roti_capati', 'nasi_lemak_lontong'});
-    expect(preview['roti_capati'], await ticketFor('roti_capati'));
-    expect(preview['nasi_lemak_lontong'],
-        await ticketFor('nasi_lemak_lontong'));
+    final sheets = await CashierService.instance.ticketSheets(order);
+    expect(sheets.map((sheet) => sheet.station).toSet(),
+        {'roti_capati', 'nasi_lemak_lontong'});
+    final rotiSheet =
+        sheets.firstWhere((sheet) => sheet.station == 'roti_capati');
+    final nasiSheet =
+        sheets.firstWhere((sheet) => sheet.station == 'nasi_lemak_lontong');
+    expect(rotiSheet.text, await ticketFor('roti_capati'));
+    expect(nasiSheet.text, await ticketFor('nasi_lemak_lontong'));
   });
 
   test('one station can be printed again on its own', () async {
@@ -160,7 +164,7 @@ void main() {
     final raw = await db.database;
     await raw.delete('jobs');
 
-    await CashierService.instance.sendStationTicket(order, 'roti_capati');
+    await CashierService.instance.sendStationTicket(order, 'roti_capati', '');
 
     expect(await ticketFor('roti_capati'), contains('Roti Canai'));
     expect(await ticketFor('nasi_lemak_lontong'), isNull,

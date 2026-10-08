@@ -142,9 +142,15 @@ void main() {
     expect(order.orderType, 'take_away');
 
     final jobs = await db.getAllJobs();
-    // Take-away tickets carry the TA number on the TABLE line.
-    expect(jobs.first.payload, contains('ORDER - ${order.orderNo}'));
-    expect(jobs.first.payload, contains('TABLE - ${order.orderNo}'));
+    expect(jobs, isNotEmpty, reason: 'creating an order queues its tickets');
+    // A take-away ticket identifies itself by its TA number, the same as the
+    // section the bill shows.
+    final sheets = await CashierService.instance.ticketSheets(order);
+    expect(sheets, isNotEmpty);
+    expect(sheets.first.text, contains('ORDER - TA - ${order.takeAwayNo}'));
+    expect(sheets.first.text, contains('TABLE - TAKE AWAY'));
+    expect(order.orderNo, endsWith('-TA-${order.takeAwayNo}'));
+    expect(order.takeAwayLabel, 'TA - ${order.takeAwayNo}');
 
     final preview = await cashier.receiptPreview(order);
     expect(preview, contains('TAKE AWAY'));
@@ -300,6 +306,84 @@ void main() {
     expect(tableA.merged, isFalse);
     expect(tableB.merged, isFalse);
     expect(tableA.order.id, isNot(tableB.order.id));
+  });
+
+  test('a take-away with a table joins that table\'s open bill', () async {
+    final cashier = CashierService.instance;
+
+    // The table is already eating.
+    final dining = await cashier.createOrAppendOrder(
+      channel: 'waiter',
+      tableNo: '51',
+      items: [line('Roti Telur', 3.0, 1)],
+    );
+    expect(dining.merged, isFalse);
+
+    // The table adds something to take home: it lands on the same bill.
+    final takeAway = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      orderType: 'take_away',
+      tableNo: '51',
+      items: [line('Teh O', 2.0, 2)],
+    );
+    expect(takeAway.merged, isTrue,
+        reason: 'a take-away for the table joins its open bill');
+    expect(takeAway.order.id, dining.order.id);
+    expect(takeAway.order.items.length, 2);
+    expect(takeAway.order.tableNo, '51');
+
+    // The take-away lines carry their own TA number, so the bill rules them off
+    // from the table's own lines.
+    final dineInLines =
+        takeAway.order.items.where((item) => item.section.isEmpty).toList();
+    final taLines =
+        takeAway.order.items.where((item) => item.section.isNotEmpty).toList();
+    expect(dineInLines.length, 1, reason: 'the table keeps its own line');
+    expect(taLines.length, 1, reason: 'the take-away is its own section');
+    expect(taLines.single.section, startsWith('TA - '));
+
+    // The kitchen ticket for those lines prints as take-away, with the table it
+    // came from, so the pass knows to pack it.
+    final taNo = taLines.single.section.replaceFirst('TA - ', '');
+    final sheets = await CashierService.instance.ticketSheets(takeAway.order);
+    final taSheet = sheets.firstWhere((sheet) => sheet.section.isNotEmpty,
+        orElse: () => (station: '', section: '', text: ''));
+    final ticket = taSheet.text;
+    expect(ticket, contains('ORDER - TA - $taNo'),
+        reason: 'the merged ticket carries the take-away number');
+    expect(ticket, contains('TABLE - TAKE AWAY'),
+        reason: 'a merged take-away prints as take-away');
+    expect(ticket, contains('(table 51)'),
+        reason: 'and names the table it was rung up for');
+
+    // A take-away with no table number keeps its own TA bill.
+    final bag = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      orderType: 'take_away',
+      items: [line('Teh O', 2.0, 1)],
+    );
+    expect(bag.merged, isFalse);
+    expect(bag.order.id, isNot(dining.order.id));
+  });
+
+  test('clearing history wipes the orders, their lines and the payments',
+      () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '77',
+      items: [line('Roti Kosong', 1.5, 1)],
+    );
+    await cashier.addPayment(order.id!, method: 'cash', tendered: 2.0);
+    expect(await db.getOrders(), isNotEmpty);
+
+    await db.clearTransactions();
+
+    expect(await db.getOrders(), isEmpty);
+    expect(await db.getOrder(order.id!), isNull);
+    expect(await db.paidTotal(order.id!), 0);
   });
 
   test('a trading day summarises its takings between start and end', () async {

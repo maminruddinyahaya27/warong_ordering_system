@@ -64,6 +64,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// Wipes the settled history — the orders, the take-aways and the payments
+  /// taken with them. Products, prices and settings are kept.
+  Future<void> _clearHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear history?'),
+        content: const Text(
+          'Every settled order and take-away is deleted, together with the '
+          'payments taken for them. Products, prices and settings are kept, '
+          'and order numbers start again from 001.\n\nThis cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await _db.clearTransactions();
+    AppEvents.ordersChanged();
+    await _load();
+    _snack('History cleared');
+  }
+
   Future<void> _reprint(Order order) async {
     await _cashier.reprintReceipt(order);
     _snack('Receipt queued for ${order.orderNo}');
@@ -173,6 +206,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const SizedBox(width: 8),
               Text('${orders.length}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: orders.isEmpty ? null : _clearHistory,
+                icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                label: const Text('Clear history'),
+                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+              ),
             ],
           ),
         ),
@@ -204,9 +244,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   Row(
                                     children: [
                                       CircleAvatar(
+                                        // A take-away shows its TA number.
                                         child: Text(order.tableNo.isNotEmpty
                                             ? order.tableNo
-                                            : 'TA'),
+                                            : order.takeAwayLabel),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(

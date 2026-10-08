@@ -120,14 +120,13 @@ export default function MenuItemForm({
     }
   }
 
-  // The ordering apps print at the group's station whenever the group has one;
-  // the item's own station is only a fallback (see app/api/export/route.js), so
-  // show which one actually applies instead of leaving the field to mislead.
+  // An item's own station wins; the group's station is the fallback for items
+  // that leave it empty (see app/api/export/route.js).
   const selectedGroup = groups.find((group) => group.id === form.group) || null;
   const groupStation = (selectedGroup?.station || '').trim();
   const ownStation = form.station.trim();
-  const effectiveStation = groupStation || ownStation || 'KITCHEN';
-  const stationIgnored =
+  const effectiveStation = ownStation || groupStation || 'KITCHEN';
+  const groupDiffers =
     groupStation !== '' && ownStation !== '' && ownStation !== groupStation;
 
   return (
@@ -187,7 +186,9 @@ export default function MenuItemForm({
                 required={!groupStation}
                 list="station-options"
                 value={form.station}
-                placeholder={groupStation ? 'not needed — the group routes it' : 'e.g. goreng_goreng'}
+                placeholder={groupStation
+                  ? `empty — ${selectedGroup.name} routes to ${groupStation}`
+                  : 'e.g. goreng_goreng'}
                 onChange={(event) => update('station', event.target.value)}
               />
               <datalist id="station-options">
@@ -197,18 +198,18 @@ export default function MenuItemForm({
               </datalist>
               <span className="hint">
                 Prints at <strong>{effectiveStation}</strong>
-                {groupStation
-                  ? ` — the station set on the “${selectedGroup.name}” group.`
-                  : ' — this item’s own station.'}
+                {ownStation
+                  ? ' — this item’s own station.'
+                  : ` — the station set on the “${selectedGroup?.name}” group.`}
               </span>
             </label>
 
-            {stationIgnored ? (
-              <div className="notice notice-warn" style={{ gridColumn: 'span 2' }}>
-                This item&apos;s station <strong>{ownStation}</strong> is ignored
-                while it is in <strong>{selectedGroup.name}</strong> — the
-                group&apos;s station <strong>{groupStation}</strong> wins. Point
-                the item at that group, or change the station on{' '}
+            {groupDiffers ? (
+              <div className="notice" style={{ gridColumn: 'span 2' }}>
+                This item prints at its own station{' '}
+                <strong>{ownStation}</strong>. Other items in{' '}
+                <strong>{selectedGroup.name}</strong> go to{' '}
+                <strong>{groupStation}</strong> — change that on{' '}
                 <Link href="/groups">Groups</Link>.
               </div>
             ) : null}

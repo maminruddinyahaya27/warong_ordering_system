@@ -1,51 +1,51 @@
 import 'package:flutter/material.dart';
 
-/// Shows exactly what each station's ticket will say before anything prints,
-/// and lets the cashier send one station's ticket on its own.
+/// Shows exactly what each ticket will say before anything prints, and lets the
+/// cashier send one ticket on its own.
 ///
-/// [tickets] maps each station to the text its printer receives, so a wrong
-/// station or an add-on that did not follow its parent is caught at the till
-/// instead of at the pass.
+/// [tickets] is one entry per ticket — a station, and for a take-away the table
+/// added on, its own `TA - 009` ticket — with the text its printer receives, so
+/// a wrong station or an add-on that did not follow its parent is caught at the
+/// till instead of at the pass.
 Future<void> showTicketPreview(
   BuildContext context, {
   required String orderNo,
-  required Map<String, String> tickets,
-  required Future<void> Function(String station) onPrint,
+  required List<({String label, String text})> tickets,
+  required Future<void> Function(int index) onPrint,
 }) {
-  final stations = tickets.keys.toList()..sort();
-  // Survives the dialog's rebuilds, unlike a local inside the builder below.
-  final queued = <String>{};
+  final queued = <int>{};
 
   return showDialog<void>(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setDialogState) {
-        Future<void> print(String station) async {
-          await onPrint(station);
+        Future<void> print(int index) async {
+          await onPrint(index);
           if (!context.mounted) return;
-          setDialogState(() => queued.add(station));
+          setDialogState(() => queued.add(index));
         }
 
         return AlertDialog(
           title: Text('Ticket preview · $orderNo'),
           content: SizedBox(
             width: 420,
-            child: stations.isEmpty
+            child: tickets.isEmpty
                 ? const Text('This order has no items to print.')
                 : SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        for (final station in stations)
+                        for (var i = 0; i < tickets.length; i += 1) ...[
+                          // Each ticket is ruled off from the last.
+                          if (i > 0) const Divider(height: 24, thickness: 1.2),
                           _StationTicket(
-                            label: station.trim().isEmpty
-                                ? 'KITCHEN'
-                                : station.toUpperCase(),
-                            text: tickets[station] ?? '',
-                            queued: queued.contains(station),
-                            onPrint: () => print(station),
+                            label: tickets[i].label,
+                            text: tickets[i].text,
+                            queued: queued.contains(i),
+                            onPrint: () => print(i),
                           ),
+                        ],
                       ],
                     ),
                   ),
@@ -62,8 +62,8 @@ Future<void> showTicketPreview(
   );
 }
 
-/// One station's ticket: a header with its own print button, then the ticket
-/// text as the printer receives it.
+/// One ticket: a header with its own print button, then the text as the printer
+/// receives it.
 class _StationTicket extends StatelessWidget {
   const _StationTicket({
     required this.label,

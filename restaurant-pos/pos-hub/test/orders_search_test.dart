@@ -47,12 +47,16 @@ void main() {
     }
   }
 
-  /// The table badges of the visible bills, in the order they are shown.
+  /// The table badges of the visible bills, in the order they are shown. The
+  /// take-away's second line carries a `bill-table-` key, so it is skipped.
   List<String> badges(WidgetTester tester) => tester
-      .widgetList<Text>(find.byWidgetPredicate((widget) =>
-          widget is Text &&
-          widget.key is ValueKey<String> &&
-          (widget.key! as ValueKey<String>).value.startsWith('bill-')))
+      .widgetList<Text>(find.byWidgetPredicate((widget) {
+        if (widget is! Text) return false;
+        final key = widget.key;
+        if (key is! ValueKey<String>) return false;
+        return key.value.startsWith('bill-') &&
+            !key.value.startsWith('bill-table-');
+      }))
       .map((text) => text.data!)
       .toList();
 
@@ -70,7 +74,7 @@ void main() {
   testWidgets('open bills are ordered by table number', (tester) async {
     await openList(tester);
 
-    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA'],
+    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA - 005'],
         reason: 'tables count like a human counts, take-away last');
   });
 
@@ -100,7 +104,7 @@ void main() {
     // Clearing the box brings the whole list back, still ordered.
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
-    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA']);
+    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA - 005']);
   });
 
   testWidgets('searching a table of the day never matches the order number',
@@ -114,6 +118,28 @@ void main() {
     expect(find.text('No open order for table "0930"'), findsOneWidget);
 
     // The list is unmounted so the screen's refresh timer is cancelled.
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a take-away shows its TA number and the table it kept',
+      (tester) async {
+    // A take-away may keep the table the customer waits at: shown, never
+    // required.
+    await PrintQueueDb.instance.insertOrder(const Order(
+      orderNo: '250930-TA-007',
+      orderType: 'take_away',
+      tableNo: 'T9',
+      total: 3,
+    ));
+
+    await openList(tester);
+
+    // The bubble is labelled by the TA number, with the kept table under it.
+    expect(badges(tester), contains('TA - 007'));
+    expect(find.byKey(const ValueKey('bill-table-250930-TA-007')),
+        findsOneWidget,
+        reason: 'the table number shows under the TA number');
+
     await tester.pumpWidget(const SizedBox());
   });
 }

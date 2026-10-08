@@ -9,7 +9,7 @@ class PrintQueueDb {
   static final PrintQueueDb instance = PrintQueueDb._internal();
   PrintQueueDb._internal();
 
-  static const int _version = 16;
+  static const int _version = 17;
 
   /// Tests set this to `inMemoryDatabasePath` so each test file gets its own
   /// database instead of sharing the on-disk one (which made state-dependent
@@ -111,6 +111,12 @@ class PrintQueueDb {
         await db.execute(
             "ALTER TABLE order_items ADD COLUMN parent_key TEXT NOT NULL DEFAULT ''");
       }
+      if (oldV < 17) {
+        // The part of the bill a line belongs to, e.g. `TA - 009` for a
+        // take-away the table added on.
+        await db.execute(
+            "ALTER TABLE order_items ADD COLUMN section TEXT NOT NULL DEFAULT ''");
+      }
     });
   }
 
@@ -206,7 +212,8 @@ class PrintQueueDb {
         note TEXT,
         paid INTEGER NOT NULL DEFAULT 0,
         line_key TEXT NOT NULL DEFAULT '',
-        parent_key TEXT NOT NULL DEFAULT ''
+        parent_key TEXT NOT NULL DEFAULT '',
+        section TEXT NOT NULL DEFAULT ''
       )
     ''');
   }
@@ -538,6 +545,7 @@ class PrintQueueDb {
           'paid': item.paid ? 1 : 0,
           'line_key': item.lineKey,
           'parent_key': item.parentKey,
+          'section': item.section,
         }));
       }
     });
@@ -585,6 +593,9 @@ class PrintQueueDb {
       'station': item.station,
       'note': item.note,
       'paid': item.paid ? 1 : 0,
+      'line_key': item.lineKey,
+      'parent_key': item.parentKey,
+      'section': item.section,
     });
   }
 
