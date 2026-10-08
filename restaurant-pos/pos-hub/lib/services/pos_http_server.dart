@@ -218,7 +218,7 @@ class PosHttpServer {
 
     onOrderReceived?.call();
     final stations = order.items
-        .map((item) => item.station.isEmpty ? 'KITCHEN' : item.station)
+        .map((item) => item.station)
         .toSet()
         .length;
     return _json(200, {
@@ -403,7 +403,7 @@ class PosHttpServer {
         unitPrice: unitPrice,
         lineTotal: _round2(unitPrice * qty),
         station: product?.station ??
-            (map['station'] ?? 'KITCHEN').toString(),
+            (map['station'] ?? '').toString(),
         note: (map['note'] ?? '').toString(),
         // The sender can say how the line was rung up: its own key and, for an
         // add-on, the key of the line it was ordered with.

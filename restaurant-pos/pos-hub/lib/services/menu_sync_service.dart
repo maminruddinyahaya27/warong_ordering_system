@@ -174,7 +174,7 @@ class MenuSyncService {
       sku: (entry['id'] ?? entry['sku'] ?? name).toString(),
       name: name,
       price: (entry['price'] as num?)?.toDouble() ?? 0,
-      station: entry['station']?.toString() ?? 'KITCHEN',
+      station: entry['station']?.toString() ?? '',
       category: (entry['group'] ?? entry['category'] ?? 'MENU').toString(),
       available: entry['available'] != false,
       color: (entry['groupColor'] ?? entry['color'] ?? '').toString(),

@@ -301,7 +301,7 @@ class CashierService {
   static int _itemKey(OrderItem item) => item.id ?? identityHashCode(item);
 
   static String _ownStation(OrderItem item) =>
-      item.station.isEmpty ? 'KITCHEN' : item.station;
+      item.station.trim();
 
   String _stationFor(OrderItem item, Map<int, String> byItemId) =>
       byItemId[_itemKey(item)] ?? _ownStation(item);
@@ -316,6 +316,9 @@ class CashierService {
     final sheets = <String, ({String station, String section})>{};
     for (final item in order.items) {
       final station = _stationFor(item, plan.byItemId);
+      // An item the portal left without a station prints nowhere: no ticket is
+      // queued for it (a bottled drink, say, that the kitchen never makes).
+      if (station.trim().isEmpty) continue;
       sheets['$station\u0000${item.section}'] =
           (station: station, section: item.section);
     }
@@ -346,6 +349,8 @@ class CashierService {
     String station,
     String section,
   ) async {
+    // Nothing to send for an item with no station.
+    if (station.trim().isEmpty) return;
     final plan = await _stationPlan(order);
     await _db.enqueue(
       station,

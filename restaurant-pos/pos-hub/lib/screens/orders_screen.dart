@@ -126,70 +126,92 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
     if (!mounted || mode == null) return;
 
-    double? partial;
-    var partialUnits = const <int, int>{};
-    if (mode == 'partial') {
-      final products = await _db.getProducts();
+    // Paying item by item: after each part payment the picker comes back, with
+    // what was just paid already struck through, until the bill settles or the
+    // cashier stops.
+    var current = order;
+    while (true) {
+      double? partial;
+      var partialUnits = const <int, int>{};
+      if (mode == 'partial') {
+        final products = await _db.getProducts();
+        if (!mounted) return;
+        final picked = await showPartialPicker(
+          context,
+          order: current,
+          products: products,
+          currency: _settings.currency,
+        );
+        if (!mounted || picked == null || picked.amount <= 0) return;
+        partial = picked.amount;
+        partialUnits = picked.paidUnits;
+      }
+
+      // The loop can come back round after reloading the bill, so re-check
+      // before using the context again.
       if (!mounted) return;
-      final picked = await showPartialPicker(
+      final settled = await settleOrder(
         context,
-        order: order,
-        products: products,
-        currency: _settings.currency,
+        current,
+        firstAmount: partial,
+        // The picker flow asks again itself.
+        askForMore: mode != 'partial',
       );
-      if (!mounted || picked == null || picked.amount <= 0) return;
-      partial = picked.amount;
-      partialUnits = picked.paidUnits;
-    }
+      if (settled == null || !mounted) return;
 
-    final settled = await settleOrder(context, order, firstAmount: partial);
-    if (settled == null || !mounted) return;
-
-    // The cashier may have backed out of the payment dialog. Nothing was taken
-    // this round, so the bill is left as it was — the picked items are not
-    // marked paid (which matters when the bill was already part paid, where the
-    // settle loop returns the untouched order instead of null).
-    if (!CashierService.tookPayment(order, settled)) {
-      if (partialUnits.isNotEmpty) {
-        _snack('No payment taken — the bill is unchanged');
+      // The cashier may have backed out of the payment dialog. Nothing was
+      // taken this round, so the bill is left as it was — the picked items are
+      // not marked paid (which matters when the bill was already part paid,
+      // where the settle loop returns the untouched order instead of null).
+      if (!CashierService.tookPayment(current, settled)) {
+        if (partialUnits.isNotEmpty) {
+          _snack('No payment taken — the bill is unchanged');
+        }
+        return;
       }
-      return;
-    }
 
-    // The money is taken, so record the units it covered straight away — before
-    // the receipt question — otherwise declining the receipt would leave an
-    // already paid item selectable in the picker.
-    var paidIds = const <int>[];
-    if (order.id != null) {
-      if (partialUnits.isNotEmpty) {
-        paidIds = await _cashier.recordPartPayment(order, partialUnits);
-      } else if (settled.isSettled) {
-        await _db.markAllOrderItemsPaid(order.id!);
+      // The money is taken, so record the units it covered straight away —
+      // before the receipt question — otherwise declining the receipt would
+      // leave an already paid item selectable in the picker.
+      var paidIds = const <int>[];
+      if (current.id != null) {
+        if (partialUnits.isNotEmpty) {
+          paidIds = await _cashier.recordPartPayment(current, partialUnits);
+        } else if (settled.isSettled) {
+          await _db.markAllOrderItemsPaid(current.id!);
+        }
+      }
+      AppEvents.ordersChanged();
+      if (!mounted) return;
+
+      // Always offer the receipt — including after a part payment, where the
+      // printed receipt is the record of what was paid this round.
+      final print = await askPrintReceipt(context, settled.orderNo);
+      if (print) {
+        if (paidIds.isNotEmpty && partial != null) {
+          // Part payment: the receipt covers only the units paid this round.
+          final fresh = await _db.getOrder(current.id!) ?? settled;
+          await _cashier.printPartialReceipt(fresh, paidIds, partial);
+        } else {
+          await _cashier.reprintReceipt(settled);
+        }
+      }
+      if (!mounted) return;
+
+      if (settled.isSettled) {
+        _snack('${settled.orderNo} closed');
+        return;
+      }
+
+      // Part paid. Reload the bill first, so the lines this round covered come
+      // back struck through in the picker, then pick the rest.
+      current = await _db.getOrder(settled.id!) ?? settled;
+      if (mode != 'partial') {
+        _snack('${settled.orderNo} part-paid — balance '
+            '$_money${settled.balance.toStringAsFixed(2)}');
+        return;
       }
     }
-    AppEvents.ordersChanged();
-    if (!mounted) return;
-
-    // Always offer the receipt — including after a part payment, where the
-    // printed receipt is the record of what was paid this round.
-    final print = await askPrintReceipt(context, settled.orderNo);
-    if (print) {
-      if (paidIds.isNotEmpty && partial != null) {
-        // Part payment: the receipt covers only the units paid this round.
-        final fresh = await _db.getOrder(order.id!) ?? order;
-        await _cashier.printPartialReceipt(fresh, paidIds, partial);
-      } else {
-        await _cashier.reprintReceipt(settled);
-      }
-    }
-
-    if (!mounted) return;
-    if (!settled.isSettled) {
-      _snack('${settled.orderNo} part-paid — balance '
-          '$_money${settled.balance.toStringAsFixed(2)}');
-      return;
-    }
-    _snack('${settled.orderNo} closed');
   }
 
   Future<void> _void(Order order) async {
@@ -487,8 +509,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
               )
             : null,
       ),
+      // The station is an internal detail, so the line shows its note instead
+      // (and whether a part payment has covered it).
       subtitle: Text(
-        item.paid ? '${item.station} · paid' : item.station,
+        [
+          if (item.note.trim().isNotEmpty) item.note.trim(),
+          if (item.paid) 'paid',
+        ].join(' · '),
         style: item.paid ? const TextStyle(color: Colors.grey) : null,
       ),
       trailing: Row(

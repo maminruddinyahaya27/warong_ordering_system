@@ -21,7 +21,7 @@ class MenuItem {
 
   const MenuItem({
     required this.name,
-    this.station = 'KITCHEN',
+    this.station = '',
     this.price = 0,
     this.category = '',
     this.color = '',
@@ -41,7 +41,7 @@ class MenuItem {
   factory MenuItem.fromJson(Map<String, dynamic> json) {
     return MenuItem(
       name: json['name']?.toString() ?? '',
-      station: json['station']?.toString() ?? 'KITCHEN',
+      station: json['station']?.toString() ?? '',
       price: (json['price'] is num) ? (json['price'] as num).toDouble() : 0,
       category: json['category']?.toString() ?? '',
       color: (json['color'] ?? json['groupColor'])?.toString() ?? '',

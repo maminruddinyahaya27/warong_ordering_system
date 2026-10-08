@@ -70,13 +70,33 @@ class _PartialPickerState extends State<_PartialPicker> {
     return (sum * 100).roundToDouble() / 100;
   }
 
-  /// The picked share of the bill's total, so tax is included in proportion.
+  /// The subtotal of everything still owed — the lines no part payment has
+  /// covered, with their add-ons.
+  double get _unpaidSubtotal {
+    var sum = 0.0;
+    for (final line in _lines) {
+      if (line.item.paid) continue;
+      sum += line.item.unitPrice * line.item.qty;
+      for (final child in line.children) {
+        sum += child.unitPrice * child.qty;
+      }
+    }
+    return (sum * 100).roundToDouble() / 100;
+  }
+
+  /// The money still owed on the bill.
+  double get _remaining =>
+      ((widget.order.total - widget.order.paid) * 100).roundToDouble() / 100;
+
+  /// The picked share of what is still owed, so tax is included in proportion.
   double get _amount {
-    final subtotal = widget.order.subtotal;
-    if (subtotal <= 0) return 0;
+    final unpaid = _unpaidSubtotal;
+    if (unpaid <= 0) return 0;
     final picked = _pickedSubtotal;
-    return ((widget.order.total * (picked / subtotal)) * 100).roundToDouble() /
-        100;
+    // Picking everything still owed clears the bill exactly, even when an
+    // earlier part payment was an arbitrary cash amount.
+    if (picked + 0.0001 >= unpaid) return _remaining;
+    return ((_remaining * (picked / unpaid)) * 100).roundToDouble() / 100;
   }
 
   /// The units to mark paid, per line id: a picked line takes its whole
@@ -117,7 +137,7 @@ class _PartialPickerState extends State<_PartialPicker> {
             Text(
               'Selected $currency${_amount.toStringAsFixed(2)} · '
               '${_picked.length} line(s) of '
-              '$currency${widget.order.total.toStringAsFixed(2)}'
+              '$currency${_remaining.toStringAsFixed(2)} still owed'
               '${_paidCount > 0 ? ' · $_paidCount paid' : ''}',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),

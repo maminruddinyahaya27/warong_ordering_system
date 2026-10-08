@@ -543,12 +543,17 @@ class _OrderScreenState extends State<OrderScreen> {
 
   /// Add-on items available for [parent] (e.g. the Lauk-pauk curries of a Roti
   /// Canai). They print on the parent's station.
-  List<MenuItem> _addOnItemsFor(MenuItem parent) => _menu
+  /// The add-ons offered for [parent], A–Z like the grid.
+  List<MenuItem> _addOnItemsFor(MenuItem parent) {
+    final addOns = _menu
       .where((item) =>
           item.available &&
           item.addOnFor.isNotEmpty &&
           item.addOnFor.split('|').contains(parent.category))
       .toList();
+    addOns.sort(_byName);
+    return addOns;
+  }
 
   /// The − quantity + row the add dialogs use.
   Widget _stepperRow(String label, int value, ValueChanged<int> onChanged) {
@@ -977,14 +982,24 @@ class _OrderScreenState extends State<OrderScreen> {
       colors.putIfAbsent(key, () => _parseColor(item.color));
     }
 
-    // Keep the portal's group order (first appearance); ungrouped last.
+    // Keep the portal's group order (first appearance); ungrouped last, and
+    // each group's dishes A–Z so a long list is easy to scan.
     final names = [
       ...order.where((name) => !_isUngrouped(name)),
       ...order.where(_isUngrouped),
     ];
+    for (final items in map.values) {
+      items.sort(_byName);
+    }
     return names
         .map((name) => _MenuGroup(name, colors[name], map[name]!))
         .toList();
+  }
+
+  /// Alphabetical, ignoring case, so `ayam` sits with `Ayam`.
+  static int _byName(MenuItem a, MenuItem b) {
+    final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    return byName != 0 ? byName : a.name.compareTo(b.name);
   }
 
   List<({MenuItem item, String group})> _searchResults(List<_MenuGroup> groups) {

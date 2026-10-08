@@ -21,7 +21,7 @@ class OrderItem {
     required this.name,
     required this.qty,
     required this.price,
-    this.station = 'KITCHEN',
+    this.station = '',
     this.note = '',
     this.parentId,
   }) : id = id ?? _nextId();

@@ -146,20 +146,29 @@ class _CounterScreenState extends State<CounterScreen> {
     return null;
   }
 
+  /// The dishes on screen, A–Z so a long group is easy to scan.
   List<Product> get _visibleItems {
     final query = _query.trim().toLowerCase();
-    if (query.isNotEmpty) {
-      return _products.where((p) {
-        return p.name.toLowerCase().contains(query) ||
-            p.sku.toLowerCase().contains(query) ||
-            p.category.toLowerCase().contains(query) ||
-            p.station.toLowerCase().contains(query);
-      }).toList();
-    }
-    return _products.where((p) {
-      final name = p.category.trim().isEmpty ? 'Others' : p.category.trim();
-      return name == _activeName;
-    }).toList();
+    final items = query.isNotEmpty
+        ? _products.where((p) {
+            return p.name.toLowerCase().contains(query) ||
+                p.sku.toLowerCase().contains(query) ||
+                p.category.toLowerCase().contains(query) ||
+                p.station.toLowerCase().contains(query);
+          }).toList()
+        : _products.where((p) {
+            final name = p.category.trim().isEmpty ? 'Others' : p.category.trim();
+            return name == _activeName;
+          }).toList();
+    items.sort(_byName);
+    return items;
+  }
+
+  /// Alphabetical, ignoring case, so `ayam` sits with `Ayam`.
+  static int _byName(Product a, Product b) {
+    final byName =
+        a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    return byName != 0 ? byName : a.name.compareTo(b.name);
   }
 
   // ------------------------------------------------------------------ cart
@@ -233,12 +242,17 @@ class _CounterScreenState extends State<CounterScreen> {
 
   /// Add-on items available for [parent] (e.g. the Lauk-pauk curries of a Roti
   /// Canai). Their items print on the parent's station.
-  List<Product> _addOnProductsFor(Product parent) => _products
-      .where((product) =>
-          product.available &&
-          product.addOnFor.isNotEmpty &&
-          product.addOnFor.split('|').contains(parent.category))
-      .toList();
+  /// The add-ons offered for [parent], A–Z like the grid.
+  List<Product> _addOnProductsFor(Product parent) {
+    final addOns = _products
+        .where((product) =>
+            product.available &&
+            product.addOnFor.isNotEmpty &&
+            product.addOnFor.split('|').contains(parent.category))
+        .toList();
+    addOns.sort(_byName);
+    return addOns;
+  }
 
   /// The − quantity + row the add dialogs use.
   Widget stepperRow(String label, int value, ValueChanged<int> onChanged) {

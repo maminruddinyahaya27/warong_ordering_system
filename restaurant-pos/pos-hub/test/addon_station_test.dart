@@ -171,6 +171,31 @@ void main() {
         reason: 'the other stations are not printed by a single-station print');
   });
 
+  test('an item with no station queues no ticket at all', () async {
+    // The portal can leave an item without a station — the kitchen never makes
+    // it, so nothing is queued for it.
+    await CashierService.instance.createOrder(
+      channel: 'counter',
+      tableNo: '6',
+      items: [
+        const OrderItem(
+          sku: 'drink_01',
+          name: 'Air Botol',
+          qty: 1,
+          unitPrice: 2,
+          lineTotal: 2,
+          station: '',
+          lineKey: 'L1',
+        ),
+      ],
+    );
+
+    final sheets = await CashierService.instance.ticketSheets(
+      (await PrintQueueDb.instance.getOrders(status: 'OPEN')).single,
+    );
+    expect(sheets, isEmpty, reason: 'no station, no ticket');
+  });
+
   test('a curry taken from its own group is not somebody else\'s add-on',
       () async {
     // Roti Canai and a Rendang Ayam rung up on their own lines: the curry must

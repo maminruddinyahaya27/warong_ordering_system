@@ -81,7 +81,7 @@ class OrderItem {
         qty: map['qty'] as int? ?? 1,
         unitPrice: (map['unit_price'] as num?)?.toDouble() ?? 0,
         lineTotal: (map['line_total'] as num?)?.toDouble() ?? 0,
-        station: map['station'] as String? ?? 'KITCHEN',
+        station: map['station'] as String? ?? '',
         note: map['note'] as String? ?? '',
         paid: (map['paid'] as int? ?? 0) == 1,
         lineKey: map['line_key'] as String? ?? '',

@@ -17,6 +17,7 @@ Future<Order?> settleOrder(
   BuildContext context,
   Order order, {
   double? firstAmount,
+  bool askForMore = true,
 }) async {
   final cashier = CashierService.instance;
   final settings = SettingsStore.instance;
@@ -63,7 +64,9 @@ Future<Order?> settleOrder(
 
     if (current.isSettled) break;
 
-    // Part paid: offer another tender (split bill) or stop here.
+    // Part paid: offer another tender (split bill) or stop here. The item
+    // picker flow asks for itself instead, so it does not prompt here.
+    if (!askForMore) break;
     if (!context.mounted) break;
     final another = await showDialog<bool>(
       context: context,

@@ -63,7 +63,7 @@ class Product {
         sku: map['sku'] as String,
         name: map['name'] as String? ?? '',
         price: (map['price'] as num?)?.toDouble() ?? 0,
-        station: map['station'] as String? ?? 'KITCHEN',
+        station: map['station'] as String? ?? '',
         category: map['category'] as String? ?? '',
         available: map['available'] == 1 || map['available'] == true,
         color: map['color'] as String? ?? '',

@@ -20,9 +20,9 @@ void main() {
     expect(item.price, 9.99);
   });
 
-  test('menu item defaults station to KITCHEN when missing', () {
+  test('menu item leaves the station empty when the portal sends none', () {
     final item = MenuItem.fromJson({'name': 'Pizza'});
-    expect(item.station, 'KITCHEN');
+    expect(item.station, '', reason: 'no station means nothing prints for it');
   });
 
   test('menu item reads group colour and availability', () {
