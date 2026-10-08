@@ -70,37 +70,20 @@ class _PartialPickerState extends State<_PartialPicker> {
     return (sum * 100).roundToDouble() / 100;
   }
 
-  /// The subtotal of everything still owed — the lines no part payment has
-  /// covered, with their add-ons.
-  double get _unpaidSubtotal {
-    var sum = 0.0;
-    for (final line in _lines) {
-      if (line.item.paid) continue;
-      sum += line.item.unitPrice * line.item.qty;
-      for (final child in line.children) {
-        sum += child.unitPrice * child.qty;
-      }
-    }
-    return (sum * 100).roundToDouble() / 100;
-  }
-
   /// The money still owed on the bill.
   double get _remaining =>
       ((widget.order.total - widget.order.paid) * 100).roundToDouble() / 100;
 
-  /// The picked items' own value plus their share of the tax — never more than
-  /// the bill still owes, so an earlier part payment cannot be charged twice.
+  /// What the picked items cost — their own prices, exactly as the bill lists
+  /// them — and never more than the bill still owes.
+  ///
+  /// Keeping to the item prices is what the cashier sees and trusts: an earlier
+  /// part payment cannot be charged twice, and the last pick settles the bill
+  /// (any discount or rounded part payment lands on that final amount).
   double get _amount {
-    final subtotal = widget.order.subtotal;
-    if (subtotal <= 0) return 0;
     final picked = _pickedSubtotal;
-    final share =
-        ((widget.order.total * (picked / subtotal)) * 100).roundToDouble() / 100;
     final due = _remaining;
-    // Picking the rest of the bill settles it exactly, even when the earlier
-    // part payment was an arbitrary cash amount.
-    if (picked + 0.0001 >= _unpaidSubtotal || share > due) return due;
-    return share;
+    return picked < due ? picked : due;
   }
 
   /// The units to mark paid, per line id: a picked line takes its whole

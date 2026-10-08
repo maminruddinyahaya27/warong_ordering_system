@@ -22,6 +22,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final TextEditingController _search = TextEditingController();
 
   List<Order> _orders = [];
+
+  /// Payments per order, so a split bill shows how many tenders it took.
+  Map<int, int> _payments = {};
   bool _loading = true;
   String _query = '';
 
@@ -41,11 +44,150 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _load() async {
     final orders = await _db.getOrders(limit: 200);
+    final counts = await _db.paymentCounts();
     if (!mounted) return;
     setState(() {
       _orders = orders.where((order) => order.status != 'OPEN').toList();
+      _payments = counts;
       _loading = false;
     });
+  }
+
+  /// The receipt for one payment of a split bill.
+  Future<void> _previewPayment(Order order, int index) async {
+    final text = await _cashier.paymentPreview(order, index);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Payment ${index + 1} · ${order.orderNo}'),
+        content: SizedBox(
+          width: 360,
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.all(14),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                text,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.35,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _printPayment(Order order, int index) async {
+    await _cashier.printPayment(order, index);
+    _snack('Receipt queued · ${order.orderNo} (payment ${index + 1})');
+  }
+
+  /// The split payments behind one order, by order number.
+  Future<void> _showPayments(Order order) async {
+    if (order.id == null) return;
+    final payments = await _db.getOrderPayments(order.id!);
+    if (!mounted) return;
+    final currency = _settings.currency;
+    var total = 0.0;
+    for (final payment in payments) {
+      total += ((payment['amount'] as num?) ?? 0).toDouble();
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Payments · ${order.orderNo}'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < payments.length; i += 1)
+                _paymentRow(order, payments[i], i, currency),
+              const Divider(),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Total paid',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  Text(
+                    '$currency${total.toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One payment, with its own Preview and Print — the receipt for that
+  /// tender alone.
+  Widget _paymentRow(
+    Order order,
+    Map<String, dynamic> payment,
+    int index,
+    String currency,
+  ) {
+    final method = (payment['method'] ?? '').toString();
+    final amount = ((payment['amount'] as num?) ?? 0).toDouble();
+    final tendered = ((payment['tendered'] as num?) ?? 0).toDouble();
+    final change = ((payment['change_due'] as num?) ?? 0).toDouble();
+    final when = ((payment['created_at'] as num?) ?? 0).toInt();
+    final cashHanded = method == 'cash' && tendered > 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('${index + 1}. ${_methodLabel(method)} · '
+                    '${_timeLabel(when)}'),
+              ),
+              Text('$currency${amount.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: () => _previewPayment(order, index),
+                child: const Text('Preview'),
+              ),
+              TextButton(
+                onPressed: () => _printPayment(order, index),
+                child: const Text('Print'),
+              ),
+            ],
+          ),
+          if (cashHanded)
+            Text(
+              '      Cash $currency${tendered.toStringAsFixed(2)}'
+              '${change > 0 ? ' · change $currency${change.toStringAsFixed(2)}' : ''}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+        ],
+      ),
+    );
   }
 
   List<Order> get _filtered {
@@ -102,49 +244,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _snack('Receipt queued for ${order.orderNo}');
   }
 
-  Future<void> _showReceipt(Order order) async {
-    // Build the preview first — it needs the tender list from the database.
-    final preview = await _cashier.receiptPreview(order);
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Receipt · ${order.orderNo}'),
-        content: SizedBox(
-          width: 360,
-          child: Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(14),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                preview,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  height: 1.35,
-                  color: Colors.black,
-                ),
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
-          ),
-          FilledButton.icon(
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              await _reprint(order);
-            },
-            icon: const Icon(Icons.print, size: 18),
-            label: const Text('Reprint'),
-          ),
-        ],
-      ),
-    );
-  }
 
   String _timeLabel(int? millis) {
     if (millis == null || millis <= 0) return '';
@@ -311,14 +410,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   const SizedBox(height: 10),
                                   Row(
                                     children: [
-                                      Expanded(
-                                        child: FilledButton.icon(
-                                          onPressed: () => _showReceipt(order),
-                                          icon: const Icon(Icons.receipt_long,
+                                      if ((_payments[order.id] ?? 0) == 1) ...[
+                                        const SizedBox(width: 8),
+                                        // One tender: straight to its receipt.
+                                        OutlinedButton.icon(
+                                          onPressed: () =>
+                                              _previewPayment(order, 0),
+                                          icon: const Icon(
+                                              Icons.payments_outlined,
                                               size: 18),
-                                          label: const Text('View receipt'),
+                                          label: const Text('Payment'),
                                         ),
-                                      ),
+                                      ] else if ((_payments[order.id] ?? 0) >
+                                          1) ...[
+                                        const SizedBox(width: 8),
+                                        // Split bill: the tender breakdown.
+                                        OutlinedButton.icon(
+                                          onPressed: () => _showPayments(order),
+                                          icon: const Icon(Icons.payments_outlined,
+                                              size: 18),
+                                          label: Text(
+                                              'Payments (${_payments[order.id]})'),
+                                        ),
+                                      ],
                                       const SizedBox(width: 8),
                                       OutlinedButton.icon(
                                         onPressed: () => _reprint(order),

@@ -353,7 +353,8 @@ class _OrderScreenState extends State<OrderScreen> {
   void _setOrderType(String type) {
     setState(() {
       _orderType = type;
-      if (type == 'take_away') _table.clear();
+      // The table field is kept as typed: a dine-in needs it, a take-away may
+      // keep it (the table the customer waits at) but never requires it.
     });
   }
 
@@ -1536,22 +1537,21 @@ class _OrderScreenState extends State<OrderScreen> {
           selected: {_orderType},
           onSelectionChanged: (selection) => _setOrderType(selection.first),
         ),
-        // Take-away has no table, so the field is hidden entirely.
-        if (_orderType == 'dine_in') ...[
-          const SizedBox(height: 8),
-          TextField(
-            controller: _table,
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.done,
-            // Done drops the keyboard, so it does not cover the menu.
-            onSubmitted: (_) => FocusScope.of(context).unfocus(),
-            decoration: const InputDecoration(
-              labelText: 'Table',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
+        // A dine-in needs its table; a take-away may keep the table the
+        // customer waits at — shown, never required.
+        const SizedBox(height: 8),
+        TextField(
+          controller: _table,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          // Done drops the keyboard, so it does not cover the menu.
+          onSubmitted: (_) => FocusScope.of(context).unfocus(),
+          decoration: InputDecoration(
+            labelText: _orderType == 'dine_in' ? 'Table' : 'Table (optional)',
+            border: const OutlineInputBorder(),
+            isDense: true,
           ),
-        ],
+        ),
         const SizedBox(height: 12),
         if (_items.isEmpty)
           const Padding(

@@ -89,3 +89,11 @@ List<GroupedOrderLine> groupOrderItems(
 Map<String, Product> productsBySku(List<Product> products) => {
       for (final product in products) product.sku: product,
     };
+
+/// A bill's lines in reading order: the table's own lines first, then each
+/// take-away section — so a bill reads the same whether the table order or the
+/// take-away was rung up first.
+List<OrderItem> billLines(Order order) => [
+      ...order.items.where((line) => line.section.isEmpty),
+      ...order.items.where((line) => line.section.isNotEmpty),
+    ];

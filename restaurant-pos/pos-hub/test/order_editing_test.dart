@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:restaurant_pos_hub/models/order.dart';
+import 'package:restaurant_pos_hub/services/order_grouping.dart';
 import 'package:restaurant_pos_hub/services/cashier_service.dart';
 import 'package:restaurant_pos_hub/services/print_queue_db.dart';
 
@@ -308,6 +309,43 @@ void main() {
     expect(tableA.order.id, isNot(tableB.order.id));
   });
 
+  test('a dine-in joins a take-away that took the same table first',
+      () async {
+    final cashier = CashierService.instance;
+
+    // The take-away is rung up first, keeping the table the customer waits at.
+    final takeAway = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      orderType: 'take_away',
+      tableNo: '88',
+      items: [line('Roti Kosong', 1.5, 1)],
+    );
+    expect(takeAway.merged, isFalse);
+
+    // The dine-in for that table then joins the same bill.
+    final dineIn = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '88',
+      items: [line('Nasi Lemak', 4.0, 1)],
+    );
+    expect(dineIn.merged, isTrue,
+        reason: 'the table already has an open bill, whatever started it');
+    expect(dineIn.order.id, takeAway.order.id);
+    expect(dineIn.order.items.length, 2);
+
+    // The bill reads as the table's, with the take-away ruled off as its own
+    // TA section — the same shape as a take-away added after the table order.
+    expect(dineIn.order.orderType, 'dine_in',
+        reason: 'the table takes over the bill');
+    final taLines =
+        dineIn.order.items.where((item) => item.section.isNotEmpty).toList();
+    final tableLines =
+        dineIn.order.items.where((item) => item.section.isEmpty).toList();
+    expect(taLines.length, 1, reason: 'the take-away line is its own section');
+    expect(taLines.single.section, startsWith('TA - '));
+    expect(tableLines.length, 1, reason: 'the dine-in line is the table\'s own');
+  });
+
   test('a take-away with a table joins that table\'s open bill', () async {
     final cashier = CashierService.instance;
 
@@ -364,6 +402,27 @@ void main() {
     );
     expect(bag.merged, isFalse);
     expect(bag.order.id, isNot(dining.order.id));
+  });
+
+  test('a bill reads table lines first, then take-away sections', () async {
+    final cashier = CashierService.instance;
+
+    // Take-away first, then the dine-in for the same table.
+    await cashier.createOrAppendOrder(
+      channel: 'counter',
+      orderType: 'take_away',
+      tableNo: '89',
+      items: [line('Roti Kosong', 1.5, 1)],
+    );
+    final bill = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '89',
+      items: [line('Nasi Lemak', 4.0, 1)],
+    );
+
+    final names = billLines(bill.order).map((item) => item.name).toList();
+    expect(names, ['Nasi Lemak', 'Roti Kosong'],
+        reason: 'the table\'s line first, the take-away after it');
   });
 
   test('clearing history wipes the orders, their lines and the payments',

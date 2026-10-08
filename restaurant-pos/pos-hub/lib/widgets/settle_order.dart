@@ -18,6 +18,7 @@ Future<Order?> settleOrder(
   Order order, {
   double? firstAmount,
   bool askForMore = true,
+  List<Map<String, dynamic>> covers = const [],
 }) async {
   final cashier = CashierService.instance;
   final settings = SettingsStore.instance;
@@ -27,6 +28,7 @@ Future<Order?> settleOrder(
   while (!current.isSettled) {
     if (!context.mounted) return current.paid > 0 ? current : null;
     final partialFirst = first && firstAmount != null && firstAmount > 0;
+    final isFirst = first;
     final amount = partialFirst ? firstAmount : current.balance;
     first = false;
     final payment = await showPaymentDialog(
@@ -50,8 +52,15 @@ Future<Order?> settleOrder(
       current = await cashier.addPayment(
         current.id!,
         method: payment.method,
-        amount: isCash ? null : payment.amount,
+        // The items picked are what this round charges, so cash handed over
+        // above them is change rather than a bigger payment. Later rounds have
+        // no charge of their own and take the balance.
+        amount: isCash && !partialFirst ? null : amount,
         tendered: isCash ? payment.amount : 0,
+        // The items this payment covers, snapshotted onto it so its receipt
+        // can be shown again later — the whole bill for a full payment, the
+        // picked lines for a part payment.
+        covers: isFirst ? covers : const [],
       );
     } catch (error) {
       if (context.mounted) {

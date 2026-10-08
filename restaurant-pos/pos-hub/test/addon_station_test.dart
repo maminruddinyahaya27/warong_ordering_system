@@ -194,6 +194,27 @@ void main() {
       (await PrintQueueDb.instance.getOrders(status: 'OPEN')).single,
     );
     expect(sheets, isEmpty, reason: 'no station, no ticket');
+
+    // Adding one to an open bill queues nothing for it either.
+    final open = await CashierService.instance.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '6',
+      items: [line('rc_01', 'Roti Canai', 2.5, key: 'L9')],
+    );
+    final before = (await PrintQueueDb.instance.getAllJobs()).length;
+    await CashierService.instance.addOrderItems(open.order.id!, [
+      const OrderItem(
+        sku: 'drink_01',
+        name: 'Air Botol',
+        qty: 1,
+        unitPrice: 2,
+        lineTotal: 2,
+        station: '',
+        lineKey: 'L10',
+      ),
+    ]);
+    final after = (await PrintQueueDb.instance.getAllJobs()).length;
+    expect(after, before, reason: 'nothing is queued for a stationless item');
   });
 
   test('a curry taken from its own group is not somebody else\'s add-on',

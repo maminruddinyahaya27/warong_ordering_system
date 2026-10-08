@@ -239,6 +239,13 @@ class CashierService {
       final open = await _db.findOpenOrderForTable(tableNo);
       if (open != null) {
         if (items.isEmpty) throw Exception('Order has no items');
+        // A take-away that took the table first becomes the table's bill: its
+        // own lines turn into a `TA - nnn` section — exactly as they would have
+        // if the table order had come first — and the bill's type takes over.
+        if (type == 'dine_in' && open.orderType == 'take_away') {
+          await _db.setSectionForUnsectioned(open.id!, 'TA - ${open.takeAwayNo}');
+          await _db.updateOrderType(open.id!, 'dine_in');
+        }
         // A take-away gets one TA number and is tagged as its own section, so
         // the bill can rule it off from the table's own lines.
         final label =
@@ -371,6 +378,7 @@ class CashierService {
     required String method,
     double? amount,
     double tendered = 0,
+    List<Map<String, dynamic>> covers = const [],
   }) async {
     final order = await _db.getOrder(id);
     if (order == null) {
@@ -391,7 +399,13 @@ class CashierService {
     double value;
     double change = 0;
     if (amount != null) {
+      // An explicit charge — the items a part payment covers. Cash handed over
+      // above it is change, not money taken.
       value = _round2(amount);
+      if (method == 'cash') {
+        final handed = _round2(tendered);
+        if (handed > value + 0.0001) change = _round2(handed - value);
+      }
     } else if (method == 'cash') {
       final handed = _round2(tendered);
       if (handed + 0.0001 >= payable) {
@@ -419,6 +433,9 @@ class CashierService {
       amount: value,
       tendered: method == 'cash' ? _round2(tendered) : value,
       change: change,
+      // The snapshot lets this payment's receipt be previewed or reprinted
+      // later, item by item.
+      itemsJson: covers.isEmpty ? '' : jsonEncode(covers),
     );
 
     final paidNow = _round2(order.paid + value);
@@ -542,7 +559,11 @@ class CashierService {
     // still lands on its parent's station.
     final plan = await _stationPlan(order);
     final stations = <String>{
-      for (final item in items) _stationFor(item, plan.byItemId),
+      for (final item in items)
+        // An item the portal left without a station prints nowhere: it is on
+        // the bill and the receipt, but nothing is queued for the kitchen.
+        if (_stationFor(item, plan.byItemId).trim().isNotEmpty)
+          _stationFor(item, plan.byItemId),
     };
     final partial = order.copyWith(items: items);
     for (final station in stations) {
@@ -691,6 +712,119 @@ class CashierService {
     _kickPrinter();
   }
 
+  /// The items one payment covered, from the snapshot stored with it.
+  List<Map<String, dynamic>> _coveredItems(Map<String, dynamic> payment) {
+    final raw = (payment['items'] ?? '').toString();
+    if (raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return [
+        for (final entry in decoded)
+          if (entry is Map) Map<String, dynamic>.from(entry),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// The receipt for one payment of a bill: the items it covered and its own
+  /// totals — subtotal, total, cash tendered and change.
+  Future<String> paymentPreview(Order order, int index) async {
+    final payments = order.id == null
+        ? const <Map<String, dynamic>>[]
+        : await _db.getOrderPayments(order.id!);
+    if (index < 0 || index >= payments.length) return '';
+    final payment = payments[index];
+    String money(Object? value) =>
+        ((value as num?) ?? 0).toDouble().toStringAsFixed(2);
+
+    final tendered = ((payment['tendered'] as num?) ?? 0).toDouble();
+    final change = ((payment['change_due'] as num?) ?? 0).toDouble();
+    final covered = _coveredItems(payment);
+    var subtotal = 0.0;
+    for (final item in covered) {
+      subtotal += ((item['line'] as num?) ?? 0).toDouble();
+    }
+    const width = 32;
+    String row(String left, String right) {
+      final space = width - right.length - left.length;
+      return space > 0 ? '$left${' ' * space}$right' : '$left $right';
+    }
+
+    // The same item shape as the bill receipt: each add-on nested under its
+    // item, and every line priced.
+    final items = <String>[];
+    var number = 0;
+    for (final item in covered) {
+      final name = (item['name'] ?? '').toString();
+      final qty = ((item['qty'] as num?) ?? 1).toInt();
+      final price = ((item['price'] as num?) ?? 0).toDouble();
+      final line = ((item['line'] as num?) ?? 0).toDouble();
+      if (item['addOn'] == true) {
+        items.add('    - $name');
+        items.add(row('       $qty X ${money(price)}', money(line)));
+      } else {
+        number += 1;
+        items.add('$number. $name');
+        items.add(row('   $qty X ${money(price)}', money(line)));
+      }
+    }
+    final lines = <String>[
+      _settings.restaurantName.isEmpty ? '' : _settings.restaurantName,
+      'ORDER ${order.orderNo}',
+      if (order.tableNo.isNotEmpty) 'TABLE ${order.tableNo}',
+      _formatDateTime(((payment['created_at'] as num?) ?? 0).toInt()),
+      '------------------------------',
+      ...items,
+      '------------------------------',
+      '${'Subtotal'.padRight(20)}${subtotal.toStringAsFixed(2)}',
+      '${'Total'.padRight(20)}${money(payment['amount'])}',
+      if (tendered > 0) '${'Cash tendered'.padRight(20)}${money(tendered)}',
+      if (change > 0) '${'Change'.padRight(20)}${money(change)}',
+    ];
+    return lines.where((line) => line.isNotEmpty).join('\n');
+  }
+
+  /// Queues one payment's receipt — the per-payment Print in History.
+  Future<void> printPayment(Order order, int index) async {
+    final payments = order.id == null
+        ? const <Map<String, dynamic>>[]
+        : await _db.getOrderPayments(order.id!);
+    if (index < 0 || index >= payments.length) return;
+    final payment = payments[index];
+    final covered = _coveredItems(payment);
+    var subtotal = 0.0;
+    for (final item in covered) {
+      subtotal += ((item['line'] as num?) ?? 0).toDouble();
+    }
+    final payload = {
+      'restaurantName': _settings.restaurantName,
+      'footer': _settings.receiptFooter,
+      'currency': _settings.currency,
+      'orderNo': order.orderNo,
+      'table': order.tableNo,
+      'server': order.serverName,
+      'channel': order.channel,
+      'orderType': order.orderType,
+      'when': _formatDateTime(((payment['created_at'] as num?) ?? 0).toInt()),
+      'items': covered,
+      'subtotal': _round2(subtotal),
+      'tax': _round2(((payment['amount'] as num?) ?? 0).toDouble() - subtotal),
+      'taxRate': _settings.taxRate,
+      'taxInclusive': _settings.taxInclusive,
+      'discount': 0,
+      'total': ((payment['amount'] as num?) ?? 0).toDouble(),
+      'balance': 0,
+      'payment': (payment['method'] ?? 'cash').toString(),
+      'tendered': ((payment['tendered'] as num?) ?? 0).toDouble(),
+      'change': ((payment['change_due'] as num?) ?? 0).toDouble(),
+      'payments': const <Map<String, dynamic>>[],
+    };
+    await _db.enqueue(receiptStation, '', jsonEncode(payload), kind: 'receipt');
+    _kickPrinter();
+  }
+
   /// Plain-text, 32-column receipt used for the on-screen preview on the
   /// History page. Mirrors what [EscPosRenderer.renderReceipt] prints.
   Future<String> receiptPreview(Order order) async {
@@ -776,14 +910,27 @@ class CashierService {
         ? const <Map<String, dynamic>>[]
         : await _db.getOrderPayments(order.id!);
     if (payments.length > 1) {
-      // Split bill: list every tender.
+      // Split bill: every tender, each with the change it gave back.
       for (final payment in payments) {
+        final method = (payment['method'] ?? '').toString();
+        final tendered = ((payment['tendered'] as num?) ?? 0).toDouble();
+        final paid = ((payment['amount'] as num?) ?? 0).toDouble();
         lines.add(row(
-          methodLabel((payment['method'] ?? '').toString()),
-          '$currency${money(((payment['amount'] as num?) ?? 0).toDouble())}',
+          methodLabel(method),
+          '$currency${money(method == 'cash' && tendered > 0 ? tendered : paid)}',
         ));
+        final change = ((payment['change_due'] as num?) ?? 0).toDouble();
+        if (change > 0) {
+          lines.add(row('Change', '$currency${money(change)}'));
+        }
       }
-      final change = order.changeDue;
+    } else if (payments.length == 1) {
+      final payment = payments.first;
+      final method = (payment['method'] ?? '').toString();
+      lines.add(row(
+          methodLabel(method),
+          '$currency${money(((payment['tendered'] as num?) ?? 0).toDouble())}'));
+      final change = ((payment['change_due'] as num?) ?? 0).toDouble();
       if (change > 0) {
         lines.add(row('Change', '$currency${money(change)}'));
       }
@@ -876,16 +1023,22 @@ class CashierService {
     }
     // What the customer actually paid: the sum of tenders once settled.
     final collected = order.paid > 0 ? _round2(order.paid) : order.total;
-    // The tender row is the source of truth for a single payment (cash shows
-    // what was handed over, not the amount charged), which also makes reprints
-    // of earlier orders correct.
-    final single = payments.length == 1 ? payments.first : null;
-    final tenderedOut = single != null
-        ? ((single['tendered'] as num?) ?? 0).toDouble()
-        : order.tendered;
-    final changeOut = single != null
-        ? ((single['change_due'] as num?) ?? 0).toDouble()
-        : order.changeDue;
+    // The tender rows are the source of truth: cash shows what was handed over
+    // and what was given back, summed across every payment — an order's own
+    // columns only hold the last tender once a bill is split, which made a
+    // split bill's receipt show the wrong cash and change.
+    var tenderedOut = 0.0;
+    var changeOut = 0.0;
+    for (final payment in payments) {
+      if ((payment['method'] ?? '').toString() == 'cash') {
+        tenderedOut += ((payment['tendered'] as num?) ?? 0).toDouble();
+      }
+      changeOut += ((payment['change_due'] as num?) ?? 0).toDouble();
+    }
+    if (payments.isEmpty) {
+      tenderedOut = order.tendered;
+      changeOut = order.changeDue;
+    }
     return {
       'restaurantName': _settings.restaurantName,
       'footer': _settings.receiptFooter,

@@ -6,6 +6,7 @@ import '../models/order.dart';
 import '../services/app_events.dart';
 import '../services/app_settings.dart';
 import '../services/cashier_service.dart';
+import '../services/order_grouping.dart';
 import '../services/print_queue_db.dart';
 import '../widgets/charge_mode_dialog.dart';
 import '../widgets/partial_picker.dart';
@@ -133,9 +134,30 @@ class _OrdersScreenState extends State<OrdersScreen> {
     while (true) {
       double? partial;
       var partialUnits = const <int, int>{};
+      var covers = const <Map<String, dynamic>>[];
+      // The covers are snapshotted onto the payment that takes the money, so
+      // its receipt can list the items: the whole bill for a full payment, the
+      // picked lines for a part payment.
+      final products = await _db.getProducts();
+      if (!mounted) return;
+      final childIds = <int>{
+        for (final line in groupOrderItems(current.items, productsBySku(products)))
+          for (final child in line.children)
+            if (child.id != null) child.id!,
+      };
+      if (mode != 'partial') {
+        covers = [
+          for (final item in current.items)
+            <String, dynamic>{
+              'name': item.name,
+              'qty': item.qty,
+              'price': item.unitPrice,
+              'line': item.lineTotal,
+              'addOn': childIds.contains(item.id),
+            },
+        ];
+      }
       if (mode == 'partial') {
-        final products = await _db.getProducts();
-        if (!mounted) return;
         final picked = await showPartialPicker(
           context,
           order: current,
@@ -145,6 +167,20 @@ class _OrdersScreenState extends State<OrdersScreen> {
         if (!mounted || picked == null || picked.amount <= 0) return;
         partial = picked.amount;
         partialUnits = picked.paidUnits;
+        // Snapshot what this round covers, for the payment's own receipt.
+        covers = [
+          for (final entry in picked.paidUnits.entries)
+            for (final item in current.items)
+              if (item.id == entry.key)
+                <String, dynamic>{
+                  'name': item.name,
+                  'qty': entry.value,
+                  'price': item.unitPrice,
+                  'line': (item.unitPrice * entry.value * 100).roundToDouble() /
+                      100,
+                  'addOn': childIds.contains(item.id),
+                },
+        ];
       }
 
       // The loop can come back round after reloading the bill, so re-check
@@ -156,6 +192,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         firstAmount: partial,
         // The picker flow asks again itself.
         askForMore: mode != 'partial',
+        covers: covers,
       );
       if (settled == null || !mounted) return;
 
@@ -371,44 +408,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       Text('Note: ${current.note}'),
                     ],
                     const Divider(height: 24),
-                    for (var i = 0; i < current.items.length; i += 1) ...[
-                      // A take-away the table added on is ruled off under its
-                      // own TA number.
-                      if (current.items[i].section.isNotEmpty &&
-                          (i == 0 ||
-                              current.items[i - 1].section !=
-                                  current.items[i].section)) ...[
-                        const Divider(height: 20),
-                        Row(
-                          children: [
-                            const Icon(Icons.shopping_bag_outlined, size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              current.items[i].section,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                    // The table's own lines come first, then any take-away
+                    // sections, so a bill reads the same whether the table
+                    // order or the take-away was rung up first.
+                    for (final item in billLines(current)) ...[
+                      if (_sectionHeader(current, item) != null)
+                        _sectionHeader(current, item)!,
                       _orderLine(
-                        current.items[i],
+                        item,
                         editable: editable,
                         onDecrease: () => run(
-                          () => _cashier.setOrderItemQty(current.id!,
-                              current.items[i].id!, current.items[i].qty - 1),
-                          (updated) =>
-                              '${current.items[i].name} × ${current.items[i].qty - 1}',
+                          () => _cashier.setOrderItemQty(
+                              current.id!, item.id!, item.qty - 1),
+                          (updated) => '${item.name} \u00d7 ${item.qty - 1}',
                         ),
                         onIncrease: () => run(
-                          () => _cashier.setOrderItemQty(current.id!,
-                              current.items[i].id!, current.items[i].qty + 1),
-                          (updated) =>
-                              '${current.items[i].name} × ${current.items[i].qty + 1}',
+                          () => _cashier.setOrderItemQty(
+                              current.id!, item.id!, item.qty + 1),
+                          (updated) => '${item.name} \u00d7 ${item.qty + 1}',
                         ),
                         onRemove: () async {
-                          final item = current.items[i];
                           final ok = await _confirm(
                             title: 'Remove ${item.name}?',
                             message: 'The line is removed from this order.',
@@ -486,6 +505,33 @@ class _OrdersScreenState extends State<OrdersScreen> {
           },
         );
       },
+    );
+  }
+
+  /// The rule and label shown where a take-away section starts, so the
+  /// table's own lines and each `TA - nnn` part read apart.
+  Widget? _sectionHeader(Order order, OrderItem item) {
+    if (item.section.isEmpty) return null;
+    final ordered = billLines(order);
+    final index = ordered.indexWhere((line) => line.id == item.id);
+    final before = index > 0 ? ordered[index - 1].section : '';
+    if (before == item.section) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 20),
+        Row(
+          children: [
+            const Icon(Icons.shopping_bag_outlined, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              item.section,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+      ],
     );
   }
 
@@ -659,11 +705,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
     // — but it is never required.
     final sub = takeAway && table.isNotEmpty ? table.toUpperCase() : '';
     final partPaid = order.paid > 0 && !order.isSettled;
+    // A take-away still stands on its own in blue; once it joins a table order
+    // the bill is the table's, so it turns green and shows the table number.
     final color = partPaid
         ? Colors.orange
-        : (takeAway
-            ? Colors.blueGrey
-            : Theme.of(context).colorScheme.primary);
+        : (takeAway ? Colors.blue.shade600 : Colors.green.shade600);
     final items = order.items.fold<int>(0, (sum, item) => sum + item.qty);
 
     return Tooltip(

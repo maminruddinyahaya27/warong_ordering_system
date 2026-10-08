@@ -148,6 +148,175 @@ void main() {
     expect(all.items.every((item) => item.paid), isTrue);
   });
 
+  test('change from an over-tendered part payment is not taken as paid',
+      () async {
+    // One table bill, paid in rounds by three customers.
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '1',
+      items: [
+        line('Nasi Lemak', 4.0, 1),
+        line('Ais Kosong', 0.8, 1),
+        line('Nasi Lemak + Lauk', 4.0, 1),
+        line('Rendang Daging', 5.0, 1),
+        line('Nasi Lemak', 4.0, 1),
+      ],
+    );
+    expect(order.subtotal, closeTo(17.8, 0.001));
+
+    // Customer 1: their items are RM4.80, they hand RM5 and keep the 20 sen.
+    final first = await cashier.addPayment(order.id!,
+        method: 'cash', amount: 4.8, tendered: 5.0);
+    expect(first.paid, closeTo(4.8, 0.001),
+        reason: 'only the RM4.80 charged is taken');
+
+    // Customer 2: their items are RM9.00, they hand RM10.
+    final second = await cashier.addPayment(order.id!,
+        method: 'cash', amount: 9.0, tendered: 10.0);
+    expect(second.paid, closeTo(13.8, 0.001),
+        reason: 'the RM1 change is not taken either');
+
+    // Customer 3 owes their own RM4.00 — not RM4.00 minus the two changes.
+    expect(second.balance, greaterThan(4.0),
+        reason: 'the RM1.20 of change was not banked as paid');
+    expect(await db.paidTotal(order.id!), closeTo(13.8, 0.001));
+  });
+
+  test('a split bill receipt lists every tender with its own change', () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '2',
+      items: [
+        line('Nasi Lemak', 4.0, 1),
+        line('Ais Kosong', 0.8, 1),
+        line('Roti Canai', 2.0, 1),
+      ],
+    );
+
+    // The customer's share is RM4.80 and they hand RM5; the rest goes on
+    // e-wallet.
+    final afterCash = await cashier.addPayment(order.id!,
+        method: 'cash', amount: 4.8, tendered: 5.0);
+    await cashier.addPayment(order.id!,
+        method: 'ewallet', amount: afterCash.balance);
+
+    final paid = (await db.getOrder(order.id!))!;
+    final preview = await cashier.receiptPreview(paid);
+
+    expect(preview, contains('Cash'));
+    expect(preview, contains('5.00'),
+        reason: 'what was handed over, not the RM4.80 charged');
+    expect(preview, contains('0.20'), reason: 'the change on that tender');
+    expect(preview, contains('E-Wallet'),
+        reason: 'every tender is listed, not just the last');
+  });
+
+  test('a split bill reports how many payments it took', () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '2',
+      items: [line('Nasi Lemak', 4.0, 1), line('Roti Canai', 2.0, 1)],
+    );
+    await cashier.addPayment(order.id!,
+        method: 'cash', amount: 4.0, tendered: 5.0);
+    final afterCash = (await db.getOrder(order.id!))!;
+    await cashier.addPayment(order.id!,
+        method: 'ewallet', amount: afterCash.balance);
+
+    expect(await db.paymentCounts(), {order.id!: 2},
+        reason: 'the history screen shows Payments (2) for it');
+  });
+
+  test('a payment receipt lists only the items that payment covered',
+      () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '2',
+      items: [line('Nasi Lemak', 4.0, 1), line('Roti Canai', 2.0, 1)],
+    );
+    await cashier.addPayment(
+      order.id!,
+      method: 'cash',
+      amount: 4.0,
+      tendered: 5.0,
+      covers: const [
+        {
+          'name': 'Nasi Lemak',
+          'qty': 1,
+          'price': 4.0,
+          'line': 4.0,
+          'addOn': false,
+        },
+      ],
+    );
+
+    final preview = await cashier.paymentPreview(
+        (await db.getOrder(order.id!))!, 0);
+
+    expect(preview, contains('Nasi Lemak'));
+    expect(preview, isNot(contains('Roti Canai')),
+        reason: 'the other item belongs to another payment');
+    expect(preview, contains('Subtotal'));
+    expect(preview, contains('Total'));
+    expect(preview, contains('Cash tendered'));
+    expect(preview, contains('5.00'));
+    expect(preview, contains('Change'));
+    expect(preview, isNot(contains('Balance')));
+    expect(preview, isNot(contains('Paid so far')));
+    expect(preview, isNot(contains('Payment 1 of')),
+        reason: 'the payment number is not printed');
+  });
+
+  test('a full payment receipt lists the whole bill', () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    final order = await cashier.createOrder(
+      channel: 'counter',
+      tableNo: '3',
+      items: [line('Nasi Lemak', 4.0, 1), line('Roti Canai', 2.0, 1)],
+    );
+
+    // A full payment snapshots the whole bill, exactly as the till does.
+    await cashier.addPayment(
+      order.id!,
+      method: 'cash',
+      amount: order.balance,
+      tendered: order.balance,
+      covers: [
+        for (final item in order.items)
+          {
+            'name': item.name,
+            'qty': item.qty,
+            'price': item.unitPrice,
+            'line': item.lineTotal,
+            'addOn': false,
+          },
+      ],
+    );
+
+    final preview = await cashier.paymentPreview(
+        (await db.getOrder(order.id!))!, 0);
+
+    expect(preview, contains('Nasi Lemak'));
+    expect(preview, contains('Roti Canai'),
+        reason: 'a full payment covers the whole bill');
+    expect(preview, contains('4.00'));
+    expect(preview, contains('2.00'));
+  });
+
   test('a cancelled payment counts as no money taken', () async {
     final cashier = CashierService.instance;
 

@@ -9,7 +9,7 @@ class PrintQueueDb {
   static final PrintQueueDb instance = PrintQueueDb._internal();
   PrintQueueDb._internal();
 
-  static const int _version = 17;
+  static const int _version = 18;
 
   /// Tests set this to `inMemoryDatabasePath` so each test file gets its own
   /// database instead of sharing the on-disk one (which made state-dependent
@@ -116,6 +116,12 @@ class PrintQueueDb {
         // take-away the table added on.
         await db.execute(
             "ALTER TABLE order_items ADD COLUMN section TEXT NOT NULL DEFAULT ''");
+      }
+      if (oldV < 18) {
+        // The items each payment covered, as a JSON snapshot, so a split
+        // bill's payment receipt can be previewed and reprinted later.
+        await db.execute(
+            "ALTER TABLE order_payments ADD COLUMN items TEXT NOT NULL DEFAULT ''");
       }
     });
   }
@@ -253,6 +259,7 @@ class PrintQueueDb {
         amount REAL,
         tendered REAL,
         change_due REAL,
+        items TEXT NOT NULL DEFAULT '',
         created_at INTEGER
       )
     ''');
@@ -732,11 +739,38 @@ class PrintQueueDb {
   }
 
   /// The running dine-in bill for a table, if one is still open.
-  Future<Order?> findOpenOrderForTable(String tableNo) async {    final db = await database;
+  /// Gives every line that has no section yet a section of its own — used when
+  /// a dine-in joins a take-away that took the table first, so the take-away's
+  /// lines read as their own `TA - nnn` part of the table's bill.
+  Future<void> setSectionForUnsectioned(int orderId, String section) async {
+    final db = await database;
+    await db.update(
+      'order_items',
+      {'section': section},
+      where: "order_id = ? AND section = ''",
+      whereArgs: [orderId],
+    );
+  }
+
+  /// Flips a bill's type, e.g. a take-away that becomes the table's bill.
+  Future<void> updateOrderType(int orderId, String orderType) async {
+    final db = await database;
+    await db.update(
+      'orders',
+      {'order_type': orderType},
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+  }
+
+  /// The open bill for a table, whatever kind of order started it — a
+  /// take-away that took the table first still collects the dine-in that
+  /// follows for the same table.
+  Future<Order?> findOpenOrderForTable(String tableNo) async {
+    final db = await database;
     final rows = await db.query(
       'orders',
-      where: "status = 'OPEN' AND order_type = 'dine_in' "
-          'AND table_no = ? COLLATE NOCASE',
+      where: "status = 'OPEN' AND table_no = ? COLLATE NOCASE",
       whereArgs: [tableNo],
       orderBy: 'id ASC',
       limit: 1,
@@ -828,6 +862,7 @@ class PrintQueueDb {
     required double amount,
     required double tendered,
     required double change,
+    String itemsJson = '',
   }) async {
     final db = await database;
     return db.insert('order_payments', {
@@ -836,8 +871,20 @@ class PrintQueueDb {
       'amount': amount,
       'tendered': tendered,
       'change_due': change,
+      'items': itemsJson,
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  /// How many payments each order took — a split bill show its tenders.
+  Future<Map<int, int>> paymentCounts() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      'SELECT order_id, COUNT(*) AS n FROM order_payments GROUP BY order_id',
+    );
+    return {
+      for (final row in rows) (row['order_id'] as int): (row['n'] as num).toInt(),
+    };
   }
 
   Future<List<Map<String, dynamic>>> getOrderPayments(int orderId) async {

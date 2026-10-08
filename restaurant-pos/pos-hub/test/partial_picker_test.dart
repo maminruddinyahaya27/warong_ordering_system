@@ -178,6 +178,24 @@ void main() {
     expect(other?.amount, 4.5);
   });
 
+  testWidgets('a discounted bill charges the items as listed', (tester) async {
+    // The screenshot case: the bill carries a discount, so its total is lower
+    // than the sum of its lines. Picking items must still charge their own
+    // price, not a scaled-down share.
+    final discounted = Order(
+      orderNo: '251008-001-2',
+      tableNo: '1',
+      items: twoCapatiLines().items,
+      subtotal: 12.5,
+      discount: 3,
+      total: 9.5,
+    );
+
+    // The second Capati with its curry is listed at RM8.00.
+    final picked = await pick(tester, lines: [1], order: discounted);
+    expect(picked?.amount, 8.0, reason: 'the items as listed, not 8 × 9.5/12.5');
+  });
+
   testWidgets('a line already paid shows as paid and cannot be picked again',
       (tester) async {
     await openPicker(tester, twoCapatiLines(secondPaid: true));

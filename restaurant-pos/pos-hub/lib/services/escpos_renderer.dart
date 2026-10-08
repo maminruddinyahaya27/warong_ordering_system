@@ -49,7 +49,6 @@ class EscPosRenderer {
       '[$station]',
       styles: PosStyles(
         align: PosAlign.center,
-        bold: true,
         height: _ticketHeight(),
         width: _ticketWidth(),
       ),
@@ -59,7 +58,6 @@ class EscPosRenderer {
     // they never wrap when the body is doubled in width.
     final bodyStyle = PosStyles(
       align: PosAlign.left,
-      bold: true,
       height: _ticketHeight(),
       width: _ticketWidth(),
     );
@@ -179,18 +177,27 @@ class EscPosRenderer {
     final payment = (data['payment'] ?? '').toString();
     final payments = (data['payments'] as List?) ?? const [];
     if (payments.length > 1) {
-      // Split bill: one line per tender.
+      // Split bill: one tender per line, each with the change it gave back.
       for (final raw in payments) {
         if (raw is! Map) continue;
-        line(_row(_paymentLabel((raw['method'] ?? '').toString()),
-            '$currency${_money(raw['amount'])}'));
+        final method = (raw['method'] ?? '').toString();
+        final tendered = _toDouble(raw['tendered']);
+        final paid = _toDouble(raw['amount']);
+        line(_row(
+          _paymentLabel(method),
+          '$currency${_money(method == 'cash' && tendered > 0 ? tendered : paid)}',
+        ));
+        final change = _toDouble(raw['change']);
+        if (change > 0) {
+          line('  ${_row('Change', '$currency${_money(change)}')}');
+        }
       }
     } else if (payment.isNotEmpty) {
       line(_row(_paymentLabel(payment), '$currency${_money(data['tendered'])}'));
-    }
-    final change = _toDouble(data['change']);
-    if (change > 0) {
-      line(_row('Change', '$currency${_money(change)}'));
+      final change = _toDouble(data['change']);
+      if (change > 0) {
+        line(_row('Change', '$currency${_money(change)}'));
+      }
     }
 
     out.addAll(generator.hr());
