@@ -54,11 +54,22 @@ class SettingsStore {
   int get printerCooldownMs =>
       _double('printer_cooldown_ms', 1500).round().clamp(0, 10000);
 
-  /// Text size on kitchen station tickets: 'normal' | 'large' | 'huge'.
-  /// Larger text is easier to read from across a hot kitchen.
+  /// Text size on kitchen station tickets: 'normal' | 'medium' | 'large' |
+  /// 'huge'. Larger text is easier to read from across a hot kitchen; 'medium'
+  /// widens the letters without making them taller.
   String get ticketTextSize {
     final value = _string('ticket_text_size', 'large');
-    return ['normal', 'large', 'huge'].contains(value) ? value : 'large';
+    return ['normal', 'medium', 'large', 'huge'].contains(value)
+        ? value
+        : 'large';
+  }
+
+  /// Text size on customer receipts: 'normal' | 'large' | 'huge'. Falls back
+  /// to the ticket size, so an install that predates this keeps its look.
+  String get receiptTextSize {
+    final value = _string('receipt_text_size', '');
+    if (['normal', 'medium', 'large', 'huge'].contains(value)) return value;
+    return ticketTextSize;
   }
 
   /// New dine-in orders for a table that still has an open bill are added to

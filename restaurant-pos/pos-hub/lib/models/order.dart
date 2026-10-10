@@ -118,11 +118,15 @@ class Order {
   /// Lets a client retry a send without creating a second order.
   final String idempotencyKey;
 
-  /// The take-away running number — `001` from `261007-TA-001` — or empty for
-  /// a dine-in order.
+  /// The take-away running number — `001` from `261007-TA-001`, and from
+  /// `261007-TA-001-7` where a table number trails it — or empty for a dine-in
+  /// order.
   String get takeAwayNo {
     if (orderType != 'take_away') return '';
     final parts = orderNo.split('-');
+    final marker = parts.indexOf('TA');
+    // The number follows `TA`; a trailing table must not be mistaken for it.
+    if (marker >= 0 && marker + 1 < parts.length) return parts[marker + 1];
     return parts.isEmpty ? '' : parts.last;
   }
 

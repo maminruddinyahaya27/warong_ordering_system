@@ -35,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoMerge = true;
   bool _acceptQrOrders = false;
   String _ticketSize = 'large';
+  String _receiptSize = 'large';
   bool _saving = false;
 
   @override
@@ -60,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _autoMerge = settings.autoMergeTableOrders;
     _acceptQrOrders = settings.acceptQrOrders;
     _ticketSize = settings.ticketTextSize;
+    _receiptSize = settings.receiptTextSize;
   }
 
   @override
@@ -104,6 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'rounding_step': rounding.toString(),
         'printer_cooldown_ms': cooldown.toString(),
         'ticket_text_size': _ticketSize,
+        'receipt_text_size': _receiptSize,
         'keep_awake_minutes': keepAwake.toString(),
         'auto_merge_table_orders': _autoMerge ? 'true' : 'false',
         'accept_qr_orders': _acceptQrOrders ? 'true' : 'false',
@@ -181,16 +184,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           _dropdown(
-            label: 'Text size (tickets & receipts)',
+            label: 'Ticket text size',
             value: _ticketSize,
-            options: const ['normal', 'large', 'huge'],
+            options: const ['normal', 'medium', 'large', 'huge'],
             onChanged: (value) => setState(() => _ticketSize = value),
           ),
           const Text(
-            'How large the text prints: it sizes the ticket body and its station '
-            'header, and the receipt header and footer. "large" doubles the width '
-            'and height, "huge" is three times the size. Wider text means fewer '
-            'characters per line, so long names wrap onto the next line.',
+            'How large the kitchen tickets print: the station header and the '
+            'body. "medium" widens the letters without making them taller, '
+            '"large" doubles width and height and "huge" is three times the '
+            'size. Wider text means fewer characters per line, so long names '
+            'wrap onto the next line.',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey),
+          ),
+          const SizedBox(height: 12),
+          _dropdown(
+            label: 'Receipt text size',
+            value: _receiptSize,
+            options: const ['normal', 'medium', 'large', 'huge'],
+            onChanged: (value) => setState(() => _receiptSize = value),
+          ),
+          const Text(
+            'How large the customer receipt prints, set separately from the '
+            'tickets — the header, the lines and the footer all follow it.',
             style: TextStyle(fontSize: 11.5, color: Colors.grey),
           ),
           const SizedBox(height: 12),

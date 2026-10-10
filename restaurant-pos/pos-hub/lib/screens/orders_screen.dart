@@ -481,12 +481,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
     // A take-away is a take-away whether or not it kept a table number.
     final takeAway = order.orderType == 'take_away';
     final table = order.tableNo.trim();
-    // A take-away shows its TA number, so two waiting bags are told apart; a
-    // dine-in shows its table.
-    final label = takeAway ? order.takeAwayLabel : table.toUpperCase();
-    // A take-away may keep the table the customer waits at — shown under the TA
-    // — but it is never required.
-    final sub = takeAway && table.isNotEmpty ? table.toUpperCase() : '';
+    // A take-away is labelled `TA` with its take-away number under it, so two
+    // waiting bags are told apart; a dine-in shows its table.
+    final label = takeAway ? 'TA' : table.toUpperCase();
+    // The take-away number sits under the `TA`, and the table the bag kept, if
+    // any, after it.
+    final sub = takeAway
+        ? [
+            if (order.takeAwayNo.isNotEmpty) order.takeAwayNo,
+            if (table.isNotEmpty) table.toUpperCase(),
+          ].join(' · ')
+        : '';
     final partPaid = order.paid > 0 && !order.isSettled;
     // A take-away still stands on its own in blue; once it joins a table order
     // the bill is the table's, so it turns green and shows the table number.

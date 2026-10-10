@@ -334,5 +334,67 @@ void main() {
       greaterThan(countBytes(normal, doubleSize)),
       reason: 'the enlarged size must reach the printer',
     );
+
+    // medium widens only: GS ! 0x10 is double width, single height, with no
+    // font change — the letters get broader without getting taller.
+    await SettingsStore.instance.save({'ticket_text_size': 'medium'});
+    await SettingsStore.instance.load();
+    final medium =
+        await EscPosRenderer.renderOrder('GRIDDLE', '$payload$body');
+    const doubleWidth = [0x1D, 0x21, 0x10];
+    const fontB = [0x1B, 0x4D, 0x01];
+    expect(countBytes(medium, doubleWidth), greaterThan(0),
+        reason: 'medium doubles the width');
+    expect(countBytes(medium, doubleSize),
+        lessThan(countBytes(large, doubleSize)),
+        reason: 'and keeps the normal height');
+    expect(countBytes(medium, fontB), 0,
+        reason: 'medium stays in the normal font');
+  });
+
+  test('the receipt honours its own text size setting, apart from tickets',
+      () async {
+    int countBytes(List<int> bytes, List<int> needle) {
+      var count = 0;
+      var from = 0;
+      while (true) {
+        final index = indexOfBytes(bytes.sublist(from), needle);
+        if (index == -1) break;
+        count += 1;
+        from += index + needle.length;
+      }
+      return count;
+    }
+
+    // GS ! n : 0x11 = double width + height.
+    const doubleSize = [0x1D, 0x21, 0x11];
+    const payload = '{"restaurantName":"Warong","items":[]'
+        ',"subtotal":0,"tax":0,"discount":0,"total":0,"balance":0,'
+        '"payment":"","tendered":0,"change":0,"payments":[]}';
+
+    // The ticket stays large…
+    await SettingsStore.instance
+        .save({'ticket_text_size': 'large', 'receipt_text_size': 'normal'});
+    await SettingsStore.instance.load();
+    final smallReceipt = await EscPosRenderer.renderReceipt(payload);
+    final ticket = await EscPosRenderer.renderOrder('GRIDDLE', 'ORDER - 1\n');
+    expect(countBytes(ticket, doubleSize), greaterThan(0),
+        reason: 'the ticket keeps its own size');
+
+    // …while the receipt follows the receipt setting.
+    await SettingsStore.instance.save({'receipt_text_size': 'large'});
+    await SettingsStore.instance.load();
+    final largeReceipt = await EscPosRenderer.renderReceipt(payload);
+    expect(countBytes(largeReceipt, doubleSize),
+        greaterThan(countBytes(smallReceipt, doubleSize)),
+        reason: 'the receipt size is set separately from the ticket size');
+
+    // medium on the receipt: double width, normal height.
+    await SettingsStore.instance.save({'receipt_text_size': 'medium'});
+    await SettingsStore.instance.load();
+    final mediumReceipt = await EscPosRenderer.renderReceipt(payload);
+    const doubleWidth = [0x1D, 0x21, 0x10];
+    expect(countBytes(mediumReceipt, doubleWidth), greaterThan(0),
+        reason: 'a medium receipt doubles the width');
   });
 }

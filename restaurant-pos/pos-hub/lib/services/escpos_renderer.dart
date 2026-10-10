@@ -15,18 +15,42 @@ class EscPosRenderer {
       CapabilityProfile.load(name: _profileName);
 
   /// Ticket body height, from Settings → Printing → Ticket text size.
+  /// 'medium' widens only — the letters get broader without getting taller, so
+  /// the ticket stays compact in the hand.
   static PosTextSize _ticketHeight() =>
       switch (SettingsStore.instance.ticketTextSize) {
         'normal' => PosTextSize.size1,
+        'medium' => PosTextSize.size1,
         'huge' => PosTextSize.size3,
         _ => PosTextSize.size2,
       };
 
   /// Ticket body width. Scaling the width as well matters: many 58mm printers
-  /// silently ignore a height-only scale, so "large" doubles both.
+  /// silently ignore a height-only scale, so "large" doubles both and "medium"
+  /// doubles this alone.
   static PosTextSize _ticketWidth() =>
       switch (SettingsStore.instance.ticketTextSize) {
         'normal' => PosTextSize.size1,
+        'medium' => PosTextSize.size2,
+        'huge' => PosTextSize.size3,
+        _ => PosTextSize.size2,
+      };
+
+  /// Receipt text height, from Settings → Printing → Receipt text size.
+  static PosTextSize _receiptHeight() =>
+      switch (SettingsStore.instance.receiptTextSize) {
+        'normal' => PosTextSize.size1,
+        'medium' => PosTextSize.size1,
+        'huge' => PosTextSize.size3,
+        _ => PosTextSize.size2,
+      };
+
+  /// Receipt text width — scaled with the height, since many 58mm printers
+  /// ignore a height-only scale.
+  static PosTextSize _receiptWidth() =>
+      switch (SettingsStore.instance.receiptTextSize) {
+        'normal' => PosTextSize.size1,
+        'medium' => PosTextSize.size2,
         'huge' => PosTextSize.size3,
         _ => PosTextSize.size2,
       };
@@ -95,15 +119,21 @@ class EscPosRenderer {
     // Styles must be passed to text(): text() applies the default styles first,
     // which would otherwise undo a previous setStyles() call.
     void line(String text, {PosStyles? style}) {
-      out.addAll(generator.text(text, styles: style ?? const PosStyles()));
+      out.addAll(generator.text(
+        text,
+        styles: style ??
+            PosStyles(
+              height: _receiptHeight(),
+              width: _receiptWidth(),
+            ),
+      ));
     }
 
     line((data['restaurantName'] ?? 'RECEIPT').toString().toUpperCase(),
         style: PosStyles(
           align: PosAlign.center,
-          bold: true,
-          height: _ticketHeight(),
-          width: _ticketWidth(),
+          height: _receiptHeight(),
+          width: _receiptWidth(),
         ));
     final when = (data['when'] ?? '').toString();
     if (when.isNotEmpty) {
@@ -165,8 +195,7 @@ class EscPosRenderer {
       line(_row('Discount', '-$currency${_money(discount)}'));
     }
 
-    line(_row('Total', '$currency${_money(data['total'])}'),
-        style: const PosStyles(bold: true));
+    line(_row('Total', '$currency${_money(data['total'])}'));
 
     // Part payments print what is still owed.
     final balance = _toDouble(data['balance']);
@@ -206,8 +235,8 @@ class EscPosRenderer {
       line(footer,
           style: PosStyles(
             align: PosAlign.center,
-            height: _ticketHeight(),
-            width: _ticketWidth(),
+              height: _receiptHeight(),
+            width: _receiptWidth(),
           ));
     }
 

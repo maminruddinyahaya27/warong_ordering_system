@@ -77,7 +77,7 @@ void main() {
   testWidgets('open bills are ordered by table number', (tester) async {
     await openList(tester);
 
-    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA - 005'],
+    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA'],
         reason: 'tables count like a human counts, take-away last');
   });
 
@@ -107,7 +107,7 @@ void main() {
     // Clearing the box brings the whole list back, still ordered.
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
-    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA - 005']);
+    expect(badges(tester), ['1', '2', '10', 'VIP 2', 'TA']);
   });
 
   testWidgets('searching a table of the day never matches the order number',
