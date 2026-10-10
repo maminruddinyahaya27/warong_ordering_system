@@ -205,7 +205,9 @@ class PosHttpServer {
         .toString()
         .trim();
 
-    final result = await cashier.createOrAppendOrder(
+    // Locked: several handsets can send for the same table at once, and two
+    // requests that both read "no open bill" would open two instead of merging.
+    final result = await cashier.locked(() => cashier.createOrAppendOrder(
       channel: (body['channel'] ?? 'waiter').toString(),
       tableNo: table,
       serverName: (body['server'] ?? '').toString(),
@@ -213,7 +215,7 @@ class PosHttpServer {
       orderType: orderType,
       idempotencyKey: retryKey,
       items: items,
-    );
+    ));
     final order = result.order;
 
     onOrderReceived?.call();

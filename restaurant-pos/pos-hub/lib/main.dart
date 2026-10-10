@@ -17,6 +17,7 @@ import 'services/menu_sync_service.dart';
 import 'services/online_order_service.dart';
 import 'services/pos_http_server.dart';
 import 'services/print_queue_db.dart';
+import 'services/queue_dispatcher.dart';
 import 'services/screen_awake.dart';
 
 void main() {
@@ -77,6 +78,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _bootstrap();
+    // A printer that was out of paper, or switched off, finishes its tickets
+    // by itself once it is back: failed jobs are re-queued and tried again.
+    QueueDispatcher.instance.startAutoRetry();
     AppEvents.ordersRevision.addListener(_refreshCounts);
     AppEvents.queueRevision.addListener(_refreshCounts);
     _tick = Timer.periodic(const Duration(seconds: 3), (_) {
@@ -463,7 +467,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     child: const Icon(Icons.point_of_sale),
                   )
                 : const Icon(Icons.point_of_sale),
-            label: 'Orders',
+            label: 'Cashier',
           ),
           const NavigationDestination(
             icon: Icon(Icons.list_alt),

@@ -22,6 +22,15 @@ class OrderTotals {
 }
 
 /// Creates, prices and settles orders, and pushes the matching print jobs.
+/// What a ticket needs to know: the station and section each line prints in,
+/// and the product lookup that nests add-ons under their parents.
+typedef _TicketPlan = ({
+  Map<int, String> byItemId,
+  Map<String, Product> bySku,
+  Map<int, String> sectionByItem,
+});
+
+/// Owns the till's money and printing rules.
 class CashierService {
   static final CashierService instance = CashierService._internal();
   CashierService._internal();
@@ -276,6 +285,23 @@ class CashierService {
 
   /// Kicks the printer queue without blocking the caller. Tickets print in the
   /// background, so creating an order never waits on Bluetooth.
+  /// Order operations run one at a time, so a rush of orders cannot open two
+  /// bills for the same table: each request looks for the table's open bill and
+  /// creates one when it finds none, and two of those interleaved means no
+  /// merge. Wrap the ingest in [locked].
+  Future<void> _flow = Future<void>.value();
+
+  Future<T> _serial<T>(Future<T> Function() action) {
+    final result = _flow.then((_) => action());
+    // Keep the chain alive even when an action throws.
+    _flow = result.then((_) {}, onError: (Object _) {});
+    return result;
+  }
+
+  /// Runs [action] with the order flow locked — used by the counter and by the
+  /// waiter's HTTP ingest.
+  Future<T> locked<T>(Future<T> Function() action) => _serial(action);
+
   void _kickPrinter() {
     unawaited(_dispatcher.dispatchNext().catchError((Object _) {}));
   }
@@ -287,21 +313,37 @@ class CashierService {
   /// `Rendang Kerang` prints together on the nasi lemak station even when the
   /// same bill also holds a roti canai. When that parent is not on the bill the
   /// add-on keeps its own station.
-  Future<({Map<int, String> byItemId, Map<String, Product> bySku})>
-      _stationPlan(Order order) async {
+  Future<_TicketPlan> _stationPlan(Order order) async {
     final bySku = productsBySku(await _db.getProducts());
     final byItemId = <int, String>{};
+    final sectionByItem = <int, String>{};
 
-    for (final line in groupOrderItems(order.items, bySku)) {
+    final nestLoose = order.orderType == 'take_away';
+    for (final line in groupOrderItems(order.items, bySku, nestLoose: nestLoose)) {
       final station = _ownStation(line.item);
       byItemId[_itemKey(line.item)] = station;
-      // An add-on is printed under its parent, on the parent's ticket.
+      // An add-on prints under its parent, on the parent's ticket — the same
+      // station and the same section, even when it was rung in a later round.
+      sectionByItem[_itemKey(line.item)] = line.item.section;
       for (final child in line.children) {
         byItemId[_itemKey(child)] = station;
+        sectionByItem[_itemKey(child)] = line.item.section;
       }
     }
-    return (byItemId: byItemId, bySku: bySku);
+    return (byItemId: byItemId, bySku: bySku, sectionByItem: sectionByItem);
   }
+
+  /// Identifies a line for matching a freshly added one to its stored row.
+  static String _lineSignature(OrderItem item) =>
+      '${item.sku}|${item.name}|${item.qty}|${item.note}';
+
+  /// The section a line prints in: its own, or its parent's when it is an
+  /// add-on.
+  String _sectionFor(
+    OrderItem item,
+    Map<int, String> sectionByItem,
+  ) =>
+      sectionByItem[_itemKey(item)] ?? item.section;
 
   /// Lines are matched by id; a line that was never stored falls back to its
   /// identity so two identical items never share a station.
@@ -326,8 +368,8 @@ class CashierService {
       // An item the portal left without a station prints nowhere: no ticket is
       // queued for it (a bottled drink, say, that the kitchen never makes).
       if (station.trim().isEmpty) continue;
-      sheets['$station\u0000${item.section}'] =
-          (station: station, section: item.section);
+      final section = _sectionFor(item, plan.sectionByItem);
+      sheets['$station\u0000$section'] = (station: station, section: section);
     }
     return [
       for (final sheet in sheets.values)
@@ -553,21 +595,47 @@ class CashierService {
     return updated;
   }
 
-  /// Enqueues kitchen tickets for a subset of an order's items.
+  /// Enqueues kitchen tickets for the lines just added to an order.
+  ///
+  /// Each line prints on its own station and in its own section — a take-away
+  /// added to a table's bill still carries its items on its `TA - nnn` ticket,
+  /// rather than being filtered out of the table's.
   Future<void> _sendTicketsFor(Order order, List<OrderItem> items) async {
     // The plan is computed from the whole order, so an add-on added later
     // still lands on its parent's station.
     final plan = await _stationPlan(order);
-    final stations = <String>{
-      for (final item in items)
-        // An item the portal left without a station prints nowhere: it is on
-        // the bill and the receipt, but nothing is queued for the kitchen.
-        if (_stationFor(item, plan.byItemId).trim().isNotEmpty)
-          _stationFor(item, plan.byItemId),
-    };
-    final partial = order.copyWith(items: items);
-    for (final station in stations) {
-      await _db.enqueue(station, '', _ticketPayload(station, partial, plan));
+    // The callers hand over the lines they just added; those have no row id
+    // yet, and the plan is keyed by the stored ids, so match each line to its
+    // stored self first — otherwise an add-on falls back to its own station and
+    // prints on a second ticket.
+    final storedByKey = <String, OrderItem>{};
+    final storedBySignature = <String, OrderItem>{};
+    for (final stored in order.items) {
+      if (stored.lineKey.isNotEmpty) storedByKey[stored.lineKey] = stored;
+      storedBySignature[_lineSignature(stored)] = stored;
+    }
+    OrderItem resolve(OrderItem line) =>
+        (line.lineKey.isEmpty ? null : storedByKey[line.lineKey]) ??
+        storedBySignature[_lineSignature(line)] ??
+        line;
+    final resolved = [for (final line in items) resolve(line)];
+
+    final sheets = <String, ({String station, String section})>{};
+    for (final item in resolved) {
+      final station = _stationFor(item, plan.byItemId).trim();
+      // An item the portal left without a station prints nowhere: it is on the
+      // bill and the receipt, but nothing is queued for the kitchen.
+      if (station.isEmpty) continue;
+      final section = _sectionFor(item, plan.sectionByItem);
+      sheets['$station\u0000$section'] = (station: station, section: section);
+    }
+    final partial = order.copyWith(items: resolved);
+    for (final sheet in sheets.values) {
+      await _db.enqueue(
+        sheet.station,
+        '',
+        _ticketPayload(sheet.station, partial, plan, section: sheet.section),
+      );
     }
     _kickPrinter();
   }
@@ -949,7 +1017,7 @@ class CashierService {
   String _ticketPayload(
     String station,
     Order order,
-    ({Map<int, String> byItemId, Map<String, Product> bySku}) plan, {
+    _TicketPlan plan, {
     String section = '',
   }) {
     final bySku = plan.bySku;
@@ -981,7 +1049,9 @@ class CashierService {
     final onStation = order.items
         .where((item) =>
             _stationFor(item, plan.byItemId) == station &&
-            item.section == section)
+            // An add-on belongs to its parent's section, so a curry rung in a
+            // later round still prints on the parent's ticket.
+            _sectionFor(item, plan.sectionByItem) == section)
         .toList();
 
     var number = 0;

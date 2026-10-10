@@ -44,6 +44,24 @@ void main() {
         available: true,
       ),
       Product(
+        sku: 'nl_03',
+        name: 'Nasi Lemak + Lauk',
+        price: 4,
+        station: 'nasi_lemak',
+        category: 'Nasi Lemak',
+        available: true,
+        requireAddOn: true,
+      ),
+      Product(
+        sku: 'lp_07',
+        name: 'Kari Ayam',
+        price: 5,
+        station: 'dapur',
+        category: 'Lauk-pauk',
+        available: true,
+        addOnFor: 'Roti Canai|Roti Jala|Capati|Lempeng|Nasi Lemak|Lontong',
+      ),
+      Product(
         sku: 'lp_06',
         name: 'Rendang Kerang',
         price: 5,
@@ -62,6 +80,7 @@ void main() {
     double price, {
     String key = '',
     String parent = '',
+    String section = '',
   }) =>
       OrderItem(
         sku: sku,
@@ -69,9 +88,18 @@ void main() {
         qty: 1,
         unitPrice: price,
         lineTotal: price,
-        station: sku == 'rc_01' ? 'roti_capati' : 'nasi_lemak_lontong',
+        station: sku == 'rc_01'
+            ? 'roti_capati'
+            : sku == 'dr_01'
+                ? 'minuman'
+                : sku == 'nl_03'
+                    ? 'nasi_lemak'
+                    : sku == 'lp_07'
+                        ? 'dapur'
+                        : 'nasi_lemak_lontong',
         lineKey: key,
         parentKey: parent,
+        section: section,
       );
 
   /// The ticket text queued for [station], or null when nothing was queued.
@@ -215,6 +243,179 @@ void main() {
     ]);
     final after = (await PrintQueueDb.instance.getAllJobs()).length;
     expect(after, before, reason: 'nothing is queued for a stationless item');
+  });
+
+  test('a take-away with a table keeps its add-on on the parent station',
+      () async {
+    final cashier = CashierService.instance;
+
+    // A table is already eating, then the table adds a take-away with an
+    // add-on. The curry must print under its parent, on the parent's station,
+    // in the take-away's own ticket.
+    await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '93',
+      items: [line('rc_01', 'Roti Canai', 2.5, key: 'T1')],
+    );
+    final bill = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      orderType: 'take_away',
+      tableNo: '93',
+      items: [
+        // The curry's own station is nasi_lemak_lontong, but it is an add-on
+        // for the roti, so it must print on the roti's roti_capati ticket.
+        line('rc_01', 'Roti Canai', 2.5, key: 'T2'),
+        line('lp_06', 'Rendang Kerang', 5, key: 'T3', parent: 'T2'),
+      ],
+    );
+
+    final sheets = await cashier.ticketSheets(bill.order);
+    final taSheets = sheets
+        .where((sheet) => sheet.section.isNotEmpty)
+        .toList();
+    expect(taSheets, isNotEmpty, reason: 'the take-away has its own ticket');
+    expect(taSheets.single.text, contains('Roti Canai'));
+    expect(taSheets.single.text, contains('    - Rendang Kerang'),
+        reason: 'the add-on follows its parent');
+    expect(taSheets.single.station, 'roti_capati',
+        reason: 'on the parent station, not the curry\'s own');
+  });
+
+  test('an add-on rung for a dish already on the table follows it', () async {
+    final cashier = CashierService.instance;
+
+    // Round 1: the table is eating a roti.
+    await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '94',
+      items: [line('rc_01', 'Roti Canai', 2.5, key: 'R1')],
+    );
+    // Round 2: the table adds a take-away curry — its parent is the roti from
+    // round 1, so the recorded parent key cannot match; it must still nest by
+    // the product rule and print on the roti's station.
+    final bill = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      orderType: 'take_away',
+      tableNo: '94',
+      items: [
+        line('lp_06', 'Rendang Kerang', 5, key: 'R2', parent: 'R1'),
+      ],
+    );
+
+    final sheets = await cashier.ticketSheets(bill.order);
+    // The curry prints with the roti it belongs to — the table's own ticket —
+    // so it is one ticket, and on the roti's station.
+    expect(sheets.map((sheet) => sheet.station).toSet(), {'roti_capati'},
+        reason: 'no second ticket on the curry\'s own station');
+    final rotiSheet = sheets.firstWhere((sheet) => sheet.station == 'roti_capati');
+    expect(rotiSheet.text, contains('Rendang Kerang'));
+    expect(rotiSheet.section, '',
+        reason: 'it prints as part of the table order it belongs to');
+  });
+
+  test('a curry rung beside a Nasi Lemak + Lauk joins it', () async {
+    // The table's own round: the combo (which exists to take a lauk) plus the
+    // curry on its own line — the curry must print with the combo.
+    final cashier = CashierService.instance;
+    final order = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '96',
+      items: [
+        line('nl_03', 'Nasi Lemak + Lauk', 4, key: 'Q1'),
+        line('lp_07', 'Kari Ayam', 5, key: 'Q2'),
+      ],
+    );
+
+    final sheets = await cashier.ticketSheets(order.order);
+    expect(sheets.length, 1,
+        reason: 'the curry prints on the combo ticket, not its own');
+    expect(sheets.single.station, 'nasi_lemak');
+    expect(sheets.single.text, contains('    - Kari Ayam'),
+        reason: 'nested under the combo');
+  });
+
+  test('a curry taken beside a plain dish keeps its own station', () async {
+    // The earlier rule still holds: a curry rung on its own for a dish that is
+    // not a combo prints on its own station.
+    final cashier = CashierService.instance;
+    final order = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '97',
+      items: [
+        line('nl_01', 'Nasi Lemak Biasa', 4, key: 'R1'),
+        line('lp_06', 'Rendang Kerang', 5, key: 'R2'),
+      ],
+    );
+
+    final sheets = await cashier.ticketSheets(order.order);
+    // The curry stays a line of its own — not nested under the nasi lemak.
+    expect(sheets.single.text, isNot(contains('    - Rendang Kerang')),
+        reason: 'a plain dish does not collect the curry');
+    expect(sheets.single.text, contains('Rendang Kerang'));
+  });
+
+  test('a take-away curry joins the dish already on the table', () async {
+    // The exact counter scenario: table 1 with an item and its add-on, then a
+    // take-away for table 1. The take-away's curry must follow the parent it
+    // belongs to, not print at its own station.
+    final cashier = CashierService.instance;
+
+    // Table 1: a roti with its curry.
+    final table = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '95',
+      items: [
+        line('rc_01', 'Roti Canai', 2.5, key: 'M1'),
+        line('lp_06', 'Rendang Kerang', 5, key: 'M2', parent: 'M1'),
+      ],
+    );
+    expect(table.merged, isFalse);
+
+    // TA for the same table: the curry rung on its own (no parent in this
+    // round) — it belongs to the roti above.
+    final merged = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      orderType: 'take_away',
+      tableNo: '95',
+      items: [line('lp_06', 'Rendang Kerang', 5, key: 'M3')],
+    );
+    expect(merged.merged, isTrue);
+
+    final sheets = await cashier.ticketSheets(merged.order);
+    // One ticket, on the roti's station, with the curry nested under it — the
+    // take-away curry prints with the dish it was ordered for.
+    expect(sheets.map((sheet) => sheet.station).toSet(), {'roti_capati'},
+        reason: 'the curry follows the roti, not its own station');
+    final rotiSheet = sheets.firstWhere((sheet) => sheet.station == 'roti_capati');
+    expect(rotiSheet.text, contains('    - Rendang Kerang'),
+        reason: 'nested under the roti it was ordered for');
+  });
+
+  test('a take-away added to a table prints its items on the TA ticket',
+      () async {
+    final cashier = CashierService.instance;
+    final db = PrintQueueDb.instance;
+
+    // A table bill, then a take-away the table adds on — its line carries the
+    // TA section, and the merge path must print it on that ticket.
+    final bill = await cashier.createOrAppendOrder(
+      channel: 'counter',
+      tableNo: '92',
+      items: [line('nl_01', 'Nasi Lemak', 4, key: 'L1')],
+    );
+    await cashier.addOrderItems(bill.order.id!, [
+      line('dr_01', 'Teh O', 2, key: 'L2', section: 'TA - 001'),
+    ]);
+
+    final jobs = await db.getAllJobs();
+    final taTicket = jobs
+        .where((job) => job.payload.contains('TA - 001'))
+        .map((job) => job.payload)
+        .toList();
+    expect(taTicket, isNotEmpty, reason: 'the take-away gets its own ticket');
+    expect(taTicket.first, contains('Teh O'),
+        reason: 'and its item prints on it, not filtered out');
+    expect(taTicket.first, contains('ORDER - TA - 001'));
   });
 
   test('a curry taken from its own group is not somebody else\'s add-on',

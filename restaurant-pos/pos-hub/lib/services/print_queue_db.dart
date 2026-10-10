@@ -9,7 +9,7 @@ class PrintQueueDb {
   static final PrintQueueDb instance = PrintQueueDb._internal();
   PrintQueueDb._internal();
 
-  static const int _version = 18;
+  static const int _version = 19;
 
   /// Tests set this to `inMemoryDatabasePath` so each test file gets its own
   /// database instead of sharing the on-disk one (which made state-dependent
@@ -123,6 +123,12 @@ class PrintQueueDb {
         await db.execute(
             "ALTER TABLE order_payments ADD COLUMN items TEXT NOT NULL DEFAULT ''");
       }
+      if (oldV < 19) {
+        // How many times a failed print has been retried, so the auto-retry
+        // knows when to give up.
+        await db.execute(
+            'ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
+      }
     });
   }
 
@@ -136,7 +142,8 @@ class PrintQueueDb {
         status TEXT,
         error TEXT,
         created_at INTEGER,
-        kind TEXT NOT NULL DEFAULT 'ticket'
+        kind TEXT NOT NULL DEFAULT 'ticket',
+        attempts INTEGER NOT NULL DEFAULT 0
       )
     ''');
   }
@@ -341,6 +348,29 @@ class PrintQueueDb {
         whereArgs: ['PENDING'],
         orderBy: 'created_at ASC');
     return rows.map(PrintJob.fromMap).toList();
+  }
+
+  /// Re-queues jobs a printer could not print — out of paper, switched off —
+  /// so they go out by themselves once it is back. Each sweep counts as one
+  /// attempt, and a job is left alone once it has had [maxAttempts] of them.
+  Future<int> rependFailedJobs({
+    int maxAttempts = 4,
+    Duration after = const Duration(seconds: 20),
+  }) async {
+    final db = await database;
+    final cutoff = DateTime.now().subtract(after).millisecondsSinceEpoch;
+    return db.rawUpdate(
+      "UPDATE jobs SET status = 'PENDING', error = '', attempts = attempts + 1 "
+      "WHERE status = 'FAILED' AND attempts < ? AND created_at <= ?",
+      [maxAttempts, cutoff],
+    );
+  }
+
+  /// Counts the retries a job has had, for the print queue's display.
+  Future<int> attempts(int id) async {
+    final db = await database;
+    final rows = await db.query('jobs', columns: ['attempts'], where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? 0 : (rows.first['attempts'] as int? ?? 0);
   }
 
   Future<List<PrintJob>> getAllJobs() async {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 
 import '../models/print_job.dart';
@@ -18,6 +20,7 @@ class QueueDispatcher {
 
   bool _dispatching = false;
   bool _drainQueued = false;
+  Timer? _autoRetry;
 
   void Function(String station, String status)? onJobResult;
 
@@ -69,6 +72,27 @@ class QueueDispatcher {
     // Reload mappings in case a station->printer was assigned after startup.
     await loadBondedPrinters();
     await dispatchNext();
+  }
+
+  /// Re-queues jobs a printer could not print — out of paper, switched off —
+  /// and tries them again, so those tickets print by themselves once it is
+  /// back. Safe to call more than once.
+  void startAutoRetry({
+    int maxAttempts = 4,
+    Duration every = const Duration(seconds: 20),
+  }) {
+    _autoRetry ??= Timer.periodic(every, (_) => _sweepRetries(maxAttempts));
+  }
+
+  Future<void> _sweepRetries(int maxAttempts) async {
+    try {
+      final retried = await db.rependFailedJobs(maxAttempts: maxAttempts);
+      if (retried <= 0) return;
+      onJobResult?.call('', 'Retrying $retried failed ticket(s)');
+      await dispatchNext();
+    } catch (_) {
+      // A sweep must never take the till down.
+    }
   }
 
   /// Single entry point. Safe to call concurrently: concurrent triggers

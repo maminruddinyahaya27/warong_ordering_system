@@ -95,8 +95,18 @@ class BluetoothPrinterManager {
     BluetoothConnection? connection;
     try {
       connection = await BluetoothConnection.toAddress(device.address);
-      connection.output.add(data);
-      await connection.output.allSent;
+      // Send in small chunks with a breather between them. A single large write
+      // can overrun the printer's buffer over SPP, which shows up as a ticket
+      // that stops after its header — most likely when several orders arrive at
+      // once and the queue is busy.
+      const chunkSize = 128;
+      for (var offset = 0; offset < data.length; offset += chunkSize) {
+        final end =
+            offset + chunkSize < data.length ? offset + chunkSize : data.length;
+        connection.output.add(Uint8List.sublistView(data, offset, end));
+        await connection.output.allSent;
+        await Future<void>.delayed(const Duration(milliseconds: 12));
+      }
       // Let the printer drain before dropping the link.
       await throttle.settle();
       return true;

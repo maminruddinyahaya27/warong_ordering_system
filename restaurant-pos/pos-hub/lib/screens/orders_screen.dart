@@ -8,6 +8,7 @@ import '../services/app_settings.dart';
 import '../services/cashier_service.dart';
 import '../services/order_grouping.dart';
 import '../services/print_queue_db.dart';
+import 'order_detail_screen.dart';
 import '../widgets/charge_mode_dialog.dart';
 import '../widgets/partial_picker.dart';
 import '../widgets/receipt_prompt.dart';
@@ -340,293 +341,20 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   void _openOrder(Order order) {
-    var current = order;
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final editable = current.status == 'OPEN';
-
-            Future<void> run(Future<Order> Function() action,
-                String Function(Order) message) async {
-              try {
-                final updated = await action();
-                setSheetState(() => current = updated);
-                AppEvents.ordersChanged();
-                _snack(message(updated));
-              } catch (error) {
-                _snack(error.toString().replaceFirst('Exception: ', ''));
-              }
-            }
-
-            return DraggableScrollableSheet(
-              expand: false,
-              initialChildSize: 0.72,
-              maxChildSize: 0.95,
-              builder: (context, controller) {
-                return ListView(
-                  controller: controller,
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            current.orderType == 'take_away'
-                                ? current.takeAwayLabel
-                                : current.orderNo,
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _statusChip(current.status),
-                        const Spacer(),
-                        IconButton(
-                          tooltip: 'Close',
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      [
-                        if (current.tableNo.isNotEmpty)
-                          'Table ${current.tableNo}',
-                        if (current.serverName.isNotEmpty)
-                          'Server ${current.serverName}',
-                        '${current.items.fold<int>(0, (sum, item) => sum + item.qty)} item(s)',
-                      ].join(' · '),
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    if (current.note.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text('Note: ${current.note}'),
-                    ],
-                    const Divider(height: 24),
-                    // The table's own lines come first, then any take-away
-                    // sections, so a bill reads the same whether the table
-                    // order or the take-away was rung up first.
-                    for (final item in billLines(current)) ...[
-                      if (_sectionHeader(current, item) != null)
-                        _sectionHeader(current, item)!,
-                      _orderLine(
-                        item,
-                        editable: editable,
-                        onDecrease: () => run(
-                          () => _cashier.setOrderItemQty(
-                              current.id!, item.id!, item.qty - 1),
-                          (updated) => '${item.name} \u00d7 ${item.qty - 1}',
-                        ),
-                        onIncrease: () => run(
-                          () => _cashier.setOrderItemQty(
-                              current.id!, item.id!, item.qty + 1),
-                          (updated) => '${item.name} \u00d7 ${item.qty + 1}',
-                        ),
-                        onRemove: () async {
-                          final ok = await _confirm(
-                            title: 'Remove ${item.name}?',
-                            message: 'The line is removed from this order.',
-                            confirmLabel: 'Remove',
-                          );
-                          if (ok != true) return;
-                          await run(
-                            () => _cashier.setOrderItemQty(
-                                current.id!, item.id!, 0),
-                            (updated) => '${item.name} removed',
-                          );
-                        },
-                      ),
-                    ],
-                    const Divider(height: 24),
-                    _totalRow('Subtotal', current.subtotal),
-                    _totalRow('Tax', current.tax),
-                    if (current.discount > 0)
-                      _totalRow('Discount', -current.discount),
-                    _totalRow('Total', current.total, bold: true),
-                    if (current.paid > 0) ...[
-                      _totalRow('Paid', current.paid),
-                      if (!current.isSettled)
-                        _totalRow('Balance', current.balance, bold: true),
-                    ],
-                    if (editable) ...[
-                      const SizedBox(height: 12),
-                    ],
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        if (editable) ...[
-                          FilledButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _pay(current);
-                            },
-                            icon: const Icon(Icons.point_of_sale),
-                            label: const Text('Charge'),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _void(current);
-                            },
-                            icon: const Icon(Icons.cancel_outlined),
-                            label: const Text('Void'),
-                          ),
-                        ],
-                        // A receipt is only meaningful once the bill is closed.
-                        if (current.isSettled)
-                          OutlinedButton.icon(
-                            onPressed: () => _reprintReceipt(current),
-                            icon: const Icon(Icons.receipt_long),
-                            label: const Text('Receipt'),
-                          ),
-                        OutlinedButton.icon(
-                          onPressed: () => _previewTickets(current),
-                          icon: const Icon(Icons.preview_outlined),
-                          label: const Text('Preview'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => _resendTickets(current),
-                          icon: const Icon(Icons.print),
-                          label: const Text('Tickets'),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// The rule and label shown where a take-away section starts, so the
-  /// table's own lines and each `TA - nnn` part read apart.
-  Widget? _sectionHeader(Order order, OrderItem item) {
-    if (item.section.isEmpty) return null;
-    final ordered = billLines(order);
-    final index = ordered.indexWhere((line) => line.id == item.id);
-    final before = index > 0 ? ordered[index - 1].section : '';
-    if (before == item.section) return null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Divider(height: 20),
-        Row(
-          children: [
-            const Icon(Icons.shopping_bag_outlined, size: 16),
-            const SizedBox(width: 6),
-            Text(
-              item.section,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-      ],
-    );
-  }
-
-  Widget _orderLine(
-    OrderItem item, {
-    required bool editable,
-    required VoidCallback onDecrease,
-    required VoidCallback onIncrease,
-    required VoidCallback onRemove,
-  }) {
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      // A line covered by a part payment is struck through.
-      title: Text(
-        item.name,
-        style: item.paid
-            ? const TextStyle(
-                decoration: TextDecoration.lineThrough,
-                color: Colors.grey,
-              )
-            : null,
-      ),
-      // The station is an internal detail, so the line shows its note instead
-      // (and whether a part payment has covered it).
-      subtitle: Text(
-        [
-          if (item.note.trim().isNotEmpty) item.note.trim(),
-          if (item.paid) 'paid',
-        ].join(' · '),
-        style: item.paid ? const TextStyle(color: Colors.grey) : null,
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (editable)
-            IconButton(
-              tooltip: 'Reduce',
-              icon: const Icon(Icons.remove_circle_outline),
-              onPressed: onDecrease,
-            )
-          else
-            Text('${item.qty}x'),
-          if (editable)
-            Text('${item.qty}',
-                style: const TextStyle(fontWeight: FontWeight.bold))
-          else
-            const SizedBox.shrink(),
-          if (editable)
-            IconButton(
-              tooltip: 'Add one',
-              icon: const Icon(Icons.add_circle_outline),
-              onPressed: onIncrease,
-            ),
-          const SizedBox(width: 8),
-          Text('$_money${item.lineTotal.toStringAsFixed(2)}'),
-          if (editable)
-            IconButton(
-              tooltip: 'Remove line',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: onRemove,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _totalRow(String label, double value, {bool bold = false}) {
-    final style = TextStyle(
-      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Text(label, style: style),
-          const Spacer(),
-          Text('$_money${value.toStringAsFixed(2)}', style: style),
-        ],
-      ),
-    );
-  }
-
-  Widget _statusChip(String status) {
-    final color = switch (status) {
-      'PAID' => Colors.green,
-      'VOID' => Colors.red,
-      _ => Colors.orange,
-    };
-    return Chip(
-      label: Text(status),
-      labelStyle: TextStyle(color: color, fontWeight: FontWeight.bold),
-      side: BorderSide(color: color.withOpacity(0.5)),
-      backgroundColor: color.withOpacity(0.08),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(
+          builder: (_) => OrderDetailScreen(
+            order: order,
+            onCharge: _pay,
+            onVoid: _void,
+            onPreviewTickets: _previewTickets,
+            onResendTickets: _resendTickets,
+            onReprintReceipt: _reprintReceipt,
+          ),
+        ))
+        .then((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -634,63 +362,118 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _query,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Search table',
-                hintText: 'Table number',
-                prefixIcon: const Icon(Icons.search),
-                border: const OutlineInputBorder(),
-                isDense: true,
-                suffixIcon: _query.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear',
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => setState(_query.clear),
-                      ),
-              ),
-              onChanged: (_) => setState(() {}),
+    final dineIn = _visibleOrders
+        .where((order) => order.orderType != 'take_away')
+        .toList();
+    final bags = _visibleOrders
+        .where((order) => order.orderType == 'take_away')
+        .toList();
+    final searched = _query.text.trim();
+
+    // No pull-to-refresh: the list refreshes itself every few seconds.
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _query,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Search table',
+              hintText: 'Table number',
+              prefixIcon: const Icon(Icons.search),
+              border: const OutlineInputBorder(),
+              isDense: true,
+              suffixIcon: _query.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => setState(_query.clear),
+                    ),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
+        if (_visibleOrders.isEmpty && searched.isNotEmpty)
+          Expanded(
+            child: Center(
+              child: Text('No open order for table "$searched"'),
+            ),
+          )
+        // Dine-in bills on the left, take-aways on the right: two thirds for
+        // the tables, one third for the bags.
+        else
+          Expanded(
+            child: Row(
+              // Stretch, so each pane has a tight height and its list is
+              // bounded.
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 7,
+                  child: _buildPane(title: 'Dine-in', orders: dineIn),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  flex: 3,
+                  child:
+                      _buildPane(title: 'Take away', orders: bags, compact: true),
+                ),
+              ],
             ),
           ),
-          if (_visibleOrders.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(40),
-              child: Center(
-                child: Text(
-                  _query.text.trim().isEmpty
-                      ? 'No open orders'
-                      : 'No open order for table "${_query.text.trim()}"',
-                ),
-              ),
-            )
-          else
-            _buildTableGrid(_visibleOrders),
-        ],
-      ),
+      ],
     );
   }
 
-  /// One circle per open bill, showing its table number. Tapping opens the
-  /// bill, where the lines are amended and the bill is settled.
-  Widget _buildTableGrid(List<Order> orders) {
-    final columns =
-        (MediaQuery.of(context).size.width / 118).floor().clamp(3, 8);
-    return GridView.count(
-      crossAxisCount: columns,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+  /// One side of the cashier: a heading and its circles, scrolling on its own.
+  Widget _buildPane({
+    required String title,
+    required List<Order> orders,
+    bool compact = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: Row(
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 8),
+              Text('${orders.length}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: orders.isEmpty
+              ? const Center(
+                  child: Text('None',
+                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                )
+              : _buildTableGrid(orders, compact: compact),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTableGrid(List<Order> orders, {bool compact = false}) {
+    // Fixed-size circles in a Wrap inside a scroll view: bounded by the pane,
+    // and nothing asks for an intrinsic size — which is what made an earlier
+    // attempt at this layout hang when the grid sat in the page's own list.
+    final side = compact ? 92.0 : 104.0;
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      children: [for (final order in orders) _buildTableBubble(order)],
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          for (final order in orders)
+            SizedBox(width: side, height: side, child: _buildTableBubble(order)),
+        ],
+      ),
     );
   }
 
@@ -726,34 +509,40 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           alignment: Alignment.center,
           padding: const EdgeInsets.all(6),
-          // One FittedBox around the whole label, so a two-line take-away
-          // bubble can never overflow its circle.
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
+          // Sized text with an ellipsis: a bubble must never need a second
+          // layout pass, and a two-line take-away bubble must not overflow.
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
                   label,
                   key: ValueKey('bill-${order.orderNo}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: label.length > 5 ? 18 : 24,
                     fontWeight: FontWeight.bold,
                     color: color,
                   ),
                 ),
-                if (sub.isNotEmpty)
-                  Text(
-                    sub,
-                    key: ValueKey('bill-table-${order.orderNo}'),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: color.withOpacity(0.8),
-                    ),
+              ),
+              if (sub.isNotEmpty)
+                Text(
+                  sub,
+                  key: ValueKey('bill-table-${order.orderNo}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: color.withOpacity(0.8),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ),

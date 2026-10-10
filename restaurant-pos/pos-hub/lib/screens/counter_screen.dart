@@ -665,14 +665,16 @@ class _CounterScreenState extends State<CounterScreen> {
     if (!_tableOk()) return;
     setState(() => _busy = true);
     try {
-      final result = await _cashier.createOrAppendOrder(
-        channel: 'counter',
-        items: _orderItems,
-        tableNo: _table.text,
-        serverName: _server.text,
-        note: _note.text,
-        orderType: _orderType,
-      );
+      // Locked against the waiter handsets, so a table rung up on two devices
+      // at once still ends on one bill.
+      final result = await _cashier.locked(() => _cashier.createOrAppendOrder(
+            channel: 'counter',
+            items: _orderItems,
+            tableNo: _table.text,
+            serverName: _server.text,
+            note: _note.text,
+            orderType: _orderType,
+          ));
       _clearCart();
       _snack(result.merged
           ? 'Added to ${result.order.orderNo} (table ${result.order.tableNo} bill)'

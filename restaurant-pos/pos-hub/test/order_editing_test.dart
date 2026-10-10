@@ -425,6 +425,26 @@ void main() {
         reason: 'the table\'s line first, the take-away after it');
   });
 
+  test('orders sent at the same moment land on one bill', () async {
+    final cashier = CashierService.instance;
+
+    // A rush on one table: every request looks for the table's open bill and
+    // creates one when it finds none. Locked, they queue, so one bill is made.
+    final results = await Future.wait([
+      for (var i = 0; i < 6; i += 1)
+        cashier.locked(() => cashier.createOrAppendOrder(
+              channel: 'waiter',
+              tableNo: '90',
+              items: [line('Roti Kosong', 1.5, 1)],
+            )),
+    ]);
+
+    expect(results.map((result) => result.order.id).toSet().length, 1,
+        reason: 'the table ends up with a single bill');
+    expect(results.last.order.items.length, 6,
+        reason: 'and every order is on it');
+  });
+
   test('clearing history wipes the orders, their lines and the payments',
       () async {
     final cashier = CashierService.instance;

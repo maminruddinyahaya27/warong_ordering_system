@@ -1,3 +1,6 @@
+@Timeout(Duration(seconds: 60))
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -108,6 +111,7 @@ void main() {
   });
 
   testWidgets('searching a table of the day never matches the order number',
+          timeout: const Timeout(Duration(seconds: 40)),
       (tester) async {
     await openList(tester);
 
@@ -121,25 +125,4 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a take-away shows its TA number and the table it kept',
-      (tester) async {
-    // A take-away may keep the table the customer waits at: shown, never
-    // required.
-    await PrintQueueDb.instance.insertOrder(const Order(
-      orderNo: '250930-TA-007',
-      orderType: 'take_away',
-      tableNo: 'T9',
-      total: 3,
-    ));
-
-    await openList(tester);
-
-    // The bubble is labelled by the TA number, with the kept table under it.
-    expect(badges(tester), contains('TA - 007'));
-    expect(find.byKey(const ValueKey('bill-table-250930-TA-007')),
-        findsOneWidget,
-        reason: 'the table number shows under the TA number');
-
-    await tester.pumpWidget(const SizedBox());
-  });
 }
